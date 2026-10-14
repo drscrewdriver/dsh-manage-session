@@ -324,8 +324,14 @@ export function apply(ctx: Context): void {
 const FAMILY_SECTION_ID = 'dsh-family'
 /** 家族子席位 key（与 thinking-levels 的声明严格一致）。 */
 const FAMILY_CHILD_KEY = 'dsh-family.tab'
-/** 接管宽限期：guard 2000ms 先试，本插件 2600ms 兜底。 */
-const FAMILY_HOST_GRACE_MS = 2600
+/** 家族容器接管分级——唯一真源 `mine-dsh-plugins/_tools/family-rank.mjs`（离线实测
+ * GitHub star + npm 周下载量加权）。延迟 = BASE + RANK * STEP。
+ * 旧注释写“guard 2000ms 先试”与 guard 实际值不符——现在谁先谁后由 rank 表唯一决定。 */
+const FAMILY_CLAIM_RANK = 4
+const FAMILY_CLAIM_BASE_MS = 200
+const FAMILY_CLAIM_STEP_MS = 900
+/** 接管宽限期（由分级派生）。 */
+const FAMILY_HOST_GRACE_MS = FAMILY_CLAIM_BASE_MS + FAMILY_CLAIM_RANK * FAMILY_CLAIM_STEP_MS
 
 /** 接管节的账本投影 hooks（与 thinking-levels 的 FamilySectionInjected 同形；locale 变更也触发重渲染）。 */
 function makeFamilyTabsHooks(slots: StewardSlotsService): {
