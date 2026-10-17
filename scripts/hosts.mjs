@@ -14,7 +14,7 @@
  * 再入列。alpha/beta 永不入列（0.2.1 只盯 rc，发布后人工加一行）。
  */
 
-/** 已声明支持的 DSH 宿主版本（0.1.0 → 0.2.0 全部 rc；npm 实查，0.1.0-rc.4/5 未发布）。 */
+/** 已声明支持的 DSH 宿主版本（0.1.0 → 0.2.1 全部 rc；npm 实查，0.1.0-rc.4/5 未发布）。 */
 export const supportedHosts = Object.freeze([
   '0.1.0-rc.2', '0.1.0-rc.3', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.0-rc.8',
   '0.1.1-rc.1', '0.1.1-rc.2',
@@ -22,10 +22,11 @@ export const supportedHosts = Object.freeze([
   '0.1.5-rc.1', '0.1.5-rc.2', '0.1.5-rc.3',
   '0.1.7-rc.1', '0.1.7-rc.2',
   '0.2.0-rc.1', '0.2.0-rc.2',
+  '0.2.1-rc.1',
 ])
 
 /** 开发/类型检查所钉的宿主版本（devDependencies 只钉它）。 */
-export const developmentHost = '0.2.0-rc.2'
+export const developmentHost = '0.2.1-rc.1'
 
 /**
  * 声明为枚举 peer 的 `@deepseek-ai/dsh-*` 包（版本随宿主逐 rc 联动）。

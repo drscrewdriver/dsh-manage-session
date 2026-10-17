@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.3（DSH 0.2.1-rc.1 适配：webStartup 守卫 + 清单补枚，同 release）
+
+### 修复 —— 宿主服务更名 webRuntime→webStartup（守卫项，装载即运行炸面）
+- 0.2.1-a.2 起宿主服务 `webRuntime` 更名 `webStartup`：`inject` 声明改钉新名，读取面改
+  `ctx.webStartup ?? ctx.get?.("webRuntime")` 双名回退链（能力探测不分派，a.2 前后宿主通吃）。
+  只补清单不发本修复 = rc.1 装载即僵死（总计划裁决 2 四炸仓之一）。
+### 新增 —— 装载判据补 0.2.1-rc.1
+- `scripts/hosts.mjs` supportedHosts 追加 `0.2.1-rc.1`（16 项）；engines/5 个 dsh peer/manifest 经
+  sync-hosts 同串精确枚举；`developmentHost` 换代 0.2.1-rc.1（devDeps 实装验证前已核 node_modules）。
+
 ## 0.5.2（merge-search-index 线转正，0.5.0-beta.1→18 全跨度）
 
 > 本线（merge-search-index 分支）此前以 0.5.0-beta.1→18 迭代，beta.13 曾短暂挂

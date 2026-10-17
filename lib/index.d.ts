@@ -1946,7 +1946,7 @@ declare function probePeer(name: string, base?: string): PeerPresence;
 declare function detectSteward(): PeerPresence;
 //#endregion
 //#region src/index.d.ts
-/** 本插件声明的宿主服务（与 toggle 相同的注入面）。 */
+/** 本插件声明的宿主服务（与 toggle 相同的注入面）。0.2.1-a.2 起 webRuntime 更名 webStartup，读取面走双名回退链。 */
 declare const inject: string[];
 /** 运行时配置 schema（与 src/config.ts 的形状保持一致）。0.1.7+：volatile 字段即设置表单。 */
 declare const Config: z<Schemastery.ObjectS<NoInfer<{
@@ -2111,7 +2111,7 @@ declare function handleIndexMethod(method: string, payload: unknown, srt: Search
 declare function handleMethod(method: string, payload: unknown, runtime: StewardRuntime): Promise<unknown>;
 /**
  * 插件主体：装配运行时、挂载两条 fenced 路由与索引生命周期。
- * @param ctx - host 插件上下文（webServer / webRuntime / 可选 sessionQuery、workspaceRegistry）。
+ * @param ctx - host 插件上下文（webServer / webStartup（旧名 webRuntime）/ 可选 sessionQuery、workspaceRegistry）。
  * @param config - 组合条目（0.1.7：`.volatile()` 字段为 live ref）。
  */
 declare function apply(ctx: Context, config?: Partial<StewardConfig & SwitchSearchConfig>): void;

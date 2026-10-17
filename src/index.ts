@@ -109,8 +109,8 @@ export { rebuildIndex, importIntoIndex, recoverIndex, DEFAULT_INDEX_LAYOUT } fro
 export { exportSnapshot, parseSnapshot } from './host/index/snapshot.ts'
 export { detectSteward, probePeer } from './host/index/peers.ts'
 
-/** 本插件声明的宿主服务（与 toggle 相同的注入面）。 */
-export const inject = ['webServer', 'webRuntime']
+/** 本插件声明的宿主服务（与 toggle 相同的注入面）。0.2.1-a.2 起 webRuntime 更名 webStartup，读取面走双名回退链。 */
+export const inject = ['webServer', 'webStartup']
 
 /** webServer 服务面（结构化镜像，零 value import）。 */
 interface StewardWebServer {
@@ -1084,7 +1084,7 @@ export async function handleMethod(
 
 /**
  * 插件主体：装配运行时、挂载两条 fenced 路由与索引生命周期。
- * @param ctx - host 插件上下文（webServer / webRuntime / 可选 sessionQuery、workspaceRegistry）。
+ * @param ctx - host 插件上下文（webServer / webStartup（旧名 webRuntime）/ 可选 sessionQuery、workspaceRegistry）。
  * @param config - 组合条目（0.1.7：`.volatile()` 字段为 live ref）。
  */
 export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearchConfig> = {}): void {
@@ -1114,9 +1114,11 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
 
   // 结构镜像取宿主服务（本插件不 value-import 官方包，也不假设 Context 有这些属性）。
   const webServer = (ctx as unknown as { webServer?: StewardWebServer }).webServer
-  const webRuntime = (ctx as unknown as { webRuntime?: StewardWebRuntime }).webRuntime
+  // 双名回退链：a.2 起宿主服务 webRuntime 更名 webStartup；能力探测不分派，两代宿主通吃。
+  const webRuntime = (ctx as unknown as { webStartup?: StewardWebRuntime }).webStartup
+    ?? ctx.get?.("webRuntime") as StewardWebRuntime | undefined
   if (webServer === undefined || webRuntime === undefined) {
-    log('webServer / webRuntime 不可用：不注册路由')
+    log('webServer / webStartup(webRuntime) 不可用：不注册路由')
     return
   }
 
