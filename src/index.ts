@@ -476,6 +476,7 @@ async function listSessions(srt: SearchRuntime): Promise<{ ok: boolean; items?: 
 async function contentSearch(
   srt: SearchRuntime,
   payload: unknown,
+  requestHost = '',
 ): Promise<{ ok: boolean; items?: unknown[]; error?: string }> {
   const record = payload as { query?: unknown; limit?: unknown; types?: unknown; sortBy?: unknown; archived?: unknown; from?: unknown; to?: unknown } | null
   const query = typeof record?.query === 'string' ? record.query.trim() : ''
@@ -513,6 +514,7 @@ async function contentSearch(
       archived,
       sortBy,
       limit,
+      ...(requestHost === '' ? {} : { atHost: requestHost }),
       ...(fromMs === undefined ? {} : { from: fromMs }),
       ...(toMs === undefined ? {} : { to: toMs }),
     })
@@ -523,11 +525,11 @@ async function contentSearch(
 }
 
 /** search-status: probe the independent index readiness and progress. */
-async function searchStatus(srt: SearchRuntime): Promise<unknown> {
+async function searchStatus(srt: SearchRuntime, requestHost = ''): Promise<unknown> {
   const index = srt.index
   const sync = index.sync.snapshot()
   // T7.3：搜索可用性由 DRS 探针裁决（硬依赖）；本地引擎仅剩会话头元数据面。
-  const drsUp = await srt.drsSource.probe()
+  const drsUp = await srt.drsSource.probe(requestHost)
   return {
     ok: true,
     available: drsUp,
@@ -712,10 +714,10 @@ export interface SearchRuntime {
 }
 
 /** JSON 面的搜索子域方法分发（index-export/import 走原始体，在路由层特判）。 */
-export async function handleIndexMethod(method: string, payload: unknown, srt: SearchRuntime): Promise<unknown> {
+export async function handleIndexMethod(method: string, payload: unknown, srt: SearchRuntime, requestHost = ''): Promise<unknown> {
   if (method === 'list-sessions') return await listSessions(srt)
-  if (method === 'content-search') return await contentSearch(srt, payload)
-  if (method === 'search-status') return await searchStatus(srt)
+  if (method === 'content-search') return await contentSearch(srt, payload, requestHost)
+  if (method === 'search-status') return await searchStatus(srt, requestHost)
   if (method === 'index-status') return await indexStatus(srt)
   if (method === 'index-rebuild') return await indexRebuild(srt)
   return { ok: false, error: `未知的 switch-search API 方法 "${method}"` }
@@ -1440,7 +1442,7 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
           return
         }
         const payload = await readJsonBody(req)
-        writeJson(res, 200, await handleIndexMethod(method, payload, srt))
+        writeJson(res, 200, await handleIndexMethod(method, payload, srt, String(req.headers.host ?? '')))
       } catch (err) {
         writeJson(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err) })
       }

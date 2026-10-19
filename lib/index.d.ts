@@ -1,10 +1,10 @@
 import z from "@deepseek-ai/schemastery";
-//#region node_modules/cosmokit/lib/index.d.ts
+//#region node_modules/.pnpm/cosmokit@1.8.1/node_modules/cosmokit/lib/index.d.ts
 type Dict<T = any, K extends string | symbol = string> = { [key in K]: T; };
 type Promisify<T> = Promise<T extends Promise<infer S> ? S : T>;
 type Awaitable<T> = [T] extends [Promise<unknown>] ? T : T | Promise<T>;
 //#endregion
-//#region node_modules/@standard-schema/spec/dist/index.d.ts
+//#region node_modules/.pnpm/@standard-schema+spec@1.1.0/node_modules/@standard-schema/spec/dist/index.d.ts
 /** The Standard Typed interface. This is a base type extended by other specs. */
 interface StandardTypedV1<Input = unknown, Output = Input> {
   /** The Standard properties. */
@@ -81,7 +81,7 @@ declare namespace StandardSchemaV1 {
   type InferOutput<Schema extends StandardTypedV1> = StandardTypedV1.InferOutput<Schema>;
 }
 //#endregion
-//#region node_modules/cordis/lib/utils.d.ts
+//#region node_modules/.pnpm/cordis@4.0.0-rc.10/node_modules/cordis/lib/utils.d.ts
 declare class DisposableList<T extends WeakKey> {
   private sn;
   private map;
@@ -113,7 +113,7 @@ declare const symbols: {
   resolveConfig: typeof Service.resolveConfig;
 };
 //#endregion
-//#region node_modules/cordis/lib/registry.d.ts
+//#region node_modules/.pnpm/cordis@4.0.0-rc.10/node_modules/cordis/lib/registry.d.ts
 type Inject<M = Dict> = (keyof M)[] | { [K in keyof M]?: M[K]; };
 type InjectKey = keyof { [K in keyof Context & string as Context[K] extends {
   [symbols.config]: any;
@@ -183,7 +183,7 @@ declare class RegistryService {
   plugin(plugin: Plugin, config?: any, getOuterStack?: () => string[]): Fiber & PromiseLike<Fiber>;
 }
 //#endregion
-//#region node_modules/cordis/lib/reflect.d.ts
+//#region node_modules/.pnpm/cordis@4.0.0-rc.10/node_modules/cordis/lib/reflect.d.ts
 declare module './context' {
   interface Context {
     get<K extends string & keyof this>(name: K, strict?: boolean): undefined | this[K];
@@ -231,7 +231,7 @@ declare class ReflectService {
   bind<T extends Function>(callback: T): T;
 }
 //#endregion
-//#region node_modules/cordis/lib/fiber.d.ts
+//#region node_modules/.pnpm/cordis@4.0.0-rc.10/node_modules/cordis/lib/fiber.d.ts
 declare module './context' {
   interface Context extends Pick<Fiber, 'effect'> {
     fiber: Fiber;
@@ -292,7 +292,7 @@ declare class Fiber {
   update(config: any, noSave?: boolean): Awaitable<void>;
 }
 //#endregion
-//#region node_modules/cordis/lib/events.d.ts
+//#region node_modules/.pnpm/cordis@4.0.0-rc.10/node_modules/cordis/lib/events.d.ts
 type Parameters<F> = F extends ((...args: infer P) => any) ? P : never;
 type ReturnType$1<F> = F extends ((...args: any) => infer R) ? R : never;
 type ThisType<F> = F extends ((this: infer T, ...args: any) => any) ? T : never;
@@ -350,7 +350,7 @@ interface Events {
   'internal/dispatch'(mode: DispatchMode, name: string | symbol, args: any[], thisArg: any): void;
 }
 //#endregion
-//#region node_modules/cordis/lib/logger.d.ts
+//#region node_modules/.pnpm/cordis@4.0.0-rc.10/node_modules/cordis/lib/logger.d.ts
 declare module './context' {
   interface Intercept {
     logger: LoggerService.Intercept;
@@ -412,7 +412,7 @@ declare class LoggerService {
   [symbols.invoke](name?: string): Logger;
 }
 //#endregion
-//#region node_modules/cordis/lib/context.d.ts
+//#region node_modules/.pnpm/cordis@4.0.0-rc.10/node_modules/cordis/lib/context.d.ts
 interface Context {
   [symbols.isolate]: Dict<symbol>;
   [symbols.intercept]: Dict;
@@ -439,7 +439,7 @@ declare class Context {
   intercept(name: string, config: any): this;
 }
 //#endregion
-//#region node_modules/cordis/lib/service.d.ts
+//#region node_modules/.pnpm/cordis@4.0.0-rc.10/node_modules/cordis/lib/service.d.ts
 declare abstract class Service<out T = never> {
   protected ctx: Context;
   static readonly init: unique symbol;
@@ -510,6 +510,14 @@ interface SwitchSearchConfig {
   archiveKeep?: number;
   /** 独立索引文件的可选绝对目录。 */
   indexDir?: string;
+  /**
+   * 语料源(T7.1):`'native'`=sessionQuery 服务 + 转录文件兜底(缺省);
+   * `'drs'`=dsh-reference-session 投影库(docs 直插;DRS 不可达时整轮
+   * 回退 native 链路,水位语义切换的首轮会全量重灌一次)。
+   */
+  corpusSource?: 'native' | 'drs';
+  /** DRS 投影库 API 基址;空=自动(首个 trustedHosts 条目,再退 http://127.0.0.1:8080)。 */
+  drsBaseUrl?: string;
 }
 /** 搜索子域缺省值。 */
 declare const SWITCH_DEFAULT_CONFIG: Required<SwitchSearchConfig>;
@@ -1120,6 +1128,44 @@ declare class SwitchIndexEngine {
       text: string;
     }[];
   }): void;
+  /**
+   * Insert or replace one session from corpus-source documents (T7.1 DRS
+   * 语料源):docs 已由语料源抽好(surface 字符串),切分仍由本引擎重算。
+   * 与 importSessionDocs 的三点差异,均为检索排序/水印所需:cwd 与
+   * updated_at 直写(日期过滤/时间排序键);标题空串保留旧行(upsertSession
+   * 同款 CASE——DRS 对老会话可能给不出标题,不能抹掉既有精修);归档旗标
+   * 冲突时不动(翻转仍归 setArchived)。
+   * @returns 落库 docs 数(0 = 该会话无可索引文本,合法终态)。
+   */
+  upsertSessionDocs(input: {
+    sessionId: string;
+    version: number;
+    title?: string;
+    cwd?: string;
+    updatedAt?: number;
+    archived?: boolean;
+    docs: readonly {
+      seq: number;
+      type: string;
+      surface: string;
+      time: number;
+      text: string;
+    }[];
+  }): number;
+  /**
+   * 会话头直写（DRS 直连时代的同步轮专用，T7.3）：只维护 sessions 元数据
+   * （水位/标题/目录/末时间/归档），**不碰 docs/docs_fts**——内容检索
+   * 已直连 dsh-reference-session（op=search&group=session），本地正文索引
+   * 退役，存量 docs 行自然老化不再新增。空标题保留旧行（同 upsertSessionDocs）。
+   */
+  upsertSessionHead(input: {
+    sessionId: string;
+    version: number;
+    title?: string;
+    cwd?: string;
+    updatedAt?: number;
+    archived?: boolean;
+  }): void;
   /** Remove one session and its documents entirely. */
   removeSession(sessionId: string): void;
   /** Update only a session's header row (title backfill), keeping documents. */
@@ -1229,6 +1275,36 @@ interface SwitchSyncState {
 interface SwitchArchiveSource {
   readonly archivedSessionIds: readonly string[];
 }
+/** DRS 语料头(依赖倒置端口;真身 = drs-source.ts 的 DrsCorpusSource)。 */
+interface SwitchDrsCorpusHead {
+  sessionId: string;
+  /** 水位代理 = DRS sessions.artifact_mtime_ms(日志重写必 bump)。 */
+  version: number;
+  title: string;
+  cwd: string;
+  updatedAt: number;
+  archived: boolean;
+}
+/** DRS 检索臂文档(surface 已折算引擎字符串域;切分由引擎重算)。 */
+interface SwitchDrsCorpusDoc {
+  seq: number;
+  type: string;
+  surface: string;
+  time: number;
+  text: string;
+}
+/**
+ * DRS 语料源端口(T7.1):corpusSource='drs' 时语料改从
+ * dsh-reference-session 投影库取,docs 直插引擎;不可达时整轮回退原生
+ * sessionQuery + 文件兜底链路。单测注入普通对象。
+ */
+interface SwitchDrsCorpusSource {
+  listSessions(): Promise<readonly SwitchDrsCorpusHead[]>;
+  readSession(sessionId: string): Promise<{
+    head: SwitchDrsCorpusHead;
+    docs: readonly SwitchDrsCorpusDoc[];
+  } | undefined>;
+}
 /**
  * One watermark syncer bound to one open engine. `poll()` is re-entrant-safe:
  * overlapping calls collapse into the running pass.
@@ -1244,6 +1320,11 @@ declare class SwitchWatermarkSync {
    * 的老会话,快照服务又整片不可用时,这是最后兜底。
    */
   private readonly readProjectionTitle?;
+  /**
+   * DRS 语料源（可选,T7.1）:提供时每轮先走 DRS 轮(docs 直插);DRS 整轮
+   * 失败（网络/路由/包络）自动回退原生 sessionQuery + 文件兜底。
+   */
+  private readonly drsSource?;
   private running;
   /**
    * 本进程已确认「重读过且产出仍为 0 docs」的会话（键 id@version）。
@@ -1271,7 +1352,12 @@ declare class SwitchWatermarkSync {
    * 第三标题源（可选）:官方投影缓存里的 title 行。事件流没有 session/title
    * 的老会话,快照服务又整片不可用时,这是最后兜底。
    */
-  readProjectionTitle?: ((sessionId: string) => string) | undefined);
+  readProjectionTitle?: ((sessionId: string) => string) | undefined,
+  /**
+   * DRS 语料源（可选,T7.1）:提供时每轮先走 DRS 轮(docs 直插);DRS 整轮
+   * 失败（网络/路由/包络）自动回退原生 sessionQuery + 文件兜底。
+   */
+  drsSource?: SwitchDrsCorpusSource | undefined);
   /**
    * 读取一个会话的日志:服务面优先,失败落文件兜底。两条路都失败时抛最后
    * 一个错误,由调用方按会话隔离记失败。
@@ -1296,6 +1382,15 @@ declare class SwitchWatermarkSync {
    */
   poll(): Promise<SwitchSyncState>;
   private runPass;
+  /**
+   * DRS 语料轮(T7.1):语料头从 DRS `op=sessions` 分页拉取,水位
+   * diff(version=artifact_mtime_ms)后按会话 `op=session&fields=search`
+   * 取检索臂 docs 直插引擎(upsertSessionDocs)。归档集合改用 DRS 行的
+   * archived 旗标(DRS sync 本就只读跟随 workspace.json,同源);标题直接
+   * 采 DRS 行(投影侧同一 extractTitleFromEvents 视界),不再走快照精修。
+   * 每会话失败隔离语义与原生轮一致;无可索引文本仍进 confirmedEmpty 缓存。
+   */
+  private runDrsPass;
   /**
    * Fold latest titles for changed sessions into the index header rows.
    *
@@ -1328,6 +1423,77 @@ declare function createArchiveSource(getRegistry: () => SwitchRegistryFace | und
   read: () => SwitchArchiveRead;
   diagnostics: () => SwitchArchiveDiagnostics;
 };
+//#endregion
+//#region src/host/index/drs-source.d.ts
+/** 一个 DRS 会话头(watermark 代理 + 检索排序字段)。 */
+interface DrsCorpusHead {
+  sessionId: string;
+  version: number;
+  title: string;
+  cwd: string;
+  updatedAt: number;
+  archived: boolean;
+}
+/** 一个 DRS 检索臂文档(surface 已折算成引擎列的字符串域)。 */
+interface DrsCorpusDoc {
+  seq: number;
+  type: string;
+  surface: 'current' | 'shadowed';
+  time: number;
+  text: string;
+}
+/** 一个 DRS 会话的完整语料(头 + docs)。 */
+interface DrsCorpusSession {
+  head: DrsCorpusHead;
+  docs: DrsCorpusDoc[];
+}
+interface DrsCorpusSourceOptions {
+  /** DRS API 基址(http://host[:port];解析序见 resolveDrsBaseUrl)。 */
+  baseUrl: string;
+  /** 注入面(单测);缺省全局 fetch。 */
+  fetchImpl?: typeof fetch;
+  /** 显式 Host 头(trustedHosts 首条回显;缺省不覆盖)。 */
+  hostHeader?: string;
+  log?: (message: string) => void;
+}
+declare class DrsCorpusSource {
+  private readonly options;
+  private readonly fetchImpl;
+  constructor(options: DrsCorpusSourceOptions);
+  /** 一个 GET 的 JSON 包络(ok!==true 或非 2xx 一律抛,由调用方回退 native)。 */
+  private getJson;
+  private static headOf;
+  /** 全量语料头(内部翻页;rows 空或凑满 total 即止)。 */
+  listSessions(): Promise<DrsCorpusHead[]>;
+  /** 一个会话的检索臂 docs；DRS 无此会话（session:null）返回 undefined。 */
+  readSession(sessionId: string): Promise<DrsCorpusSession | undefined>;
+  /**
+   * 分组内容搜索直连臂（op=search&group=session，DRS surface.searchGrouped 同构）：
+   * 会话分组/加权/过滤/锚定节选全部在 DRS 侧完成，本方法只搬 wire →
+   * 引擎命中形状（SwitchSearchHit 字段同名）。失败（网络/非 2xx/包络）直抛，
+   * 调用侧按硬依赖语义显式报错——**不回退本地索引**。
+   */
+  searchGrouped(request: {
+    query: string;
+    /** 原事件 type 列表（调用方展开粗类）；空=DRS 缺省 user+assistant。 */
+    kinds?: readonly string[];
+    archived?: 'active' | 'archived' | 'all';
+    from?: number;
+    to?: number;
+    sortBy?: 'relevance' | 'time';
+    limit?: number;
+  }): Promise<{
+    sessionId: string;
+    title: string;
+    seq: number;
+    type: string;
+    time: number;
+    updatedAt: number;
+    snippet: string;
+  }[]>;
+  /** 可性探针（op=status）：硬依赖预检/降级提示用；失败返回 false。 */
+  probe(): Promise<boolean>;
+}
 //#endregion
 //#region src/host/index/rebuild.d.ts
 /** The corpus reader a rebuild needs (same faces as the syncer). */
@@ -1995,6 +2161,8 @@ declare const Config: z<Schemastery.ObjectS<NoInfer<{
   syncIntervalMs: z<number, number, "defined">;
   archiveKeep: z<number, number, "defined">;
   indexDir: z<string, string, "defined">;
+  corpusSource: z<"native" | "drs", "native" | "drs", "defined">;
+  drsBaseUrl: z<string, string, "defined">;
 }>>, Schemastery.ObjectT<NoInfer<{
   enabled: z<boolean, boolean, "defined">;
   historyFiles: z<boolean, boolean, "defined">;
@@ -2005,6 +2173,8 @@ declare const Config: z<Schemastery.ObjectS<NoInfer<{
   syncIntervalMs: z<number, number, "defined">;
   archiveKeep: z<number, number, "defined">;
   indexDir: z<string, string, "defined">;
+  corpusSource: z<"native" | "drs", "native" | "drs", "defined">;
+  drsBaseUrl: z<string, string, "defined">;
 }>>, "plain">;
 /** 运行时依赖。 */
 interface StewardRuntime {
@@ -2124,6 +2294,8 @@ interface SwitchIndexServiceState {
 interface SearchRuntime {
   sessionQuery: SwitchSessionQuery | undefined;
   index: SwitchIndexServiceState;
+  /** DRS 直连客户端（T7.3 硬依赖：内容分组检索臂唯一来源 + 可性探针）。 */
+  drsSource: DrsCorpusSource;
   config: () => Required<StewardConfig> & SwitchSearchConfig;
   /** Lazy official archive-set source (registry first, file fallback). */
   registry: () => {

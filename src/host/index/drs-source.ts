@@ -76,8 +76,11 @@ export class DrsCorpusSource {
   }
 
   /** 一个 GET 的 JSON 包络(ok!==true 或非 2xx 一律抛,由调用方回退 native)。 */
-  private async getJson(query: string): Promise<Record<string, unknown>> {
-    const base = this.options.baseUrl.replace(/\/+$/u, '')
+  private async getJson(query: string, atHost?: string): Promise<Record<string, unknown>> {
+    // atHost=同源转发臂（调用方请求的 Host 头）：宿主端口动态分配时
+    // 配置缺省口(8080)猜不中——同源直连以请求 Host 优先。
+    const source = atHost !== undefined && atHost !== '' ? `http://${atHost}` : this.options.baseUrl
+    const base = source.replace(/\/+$/u, '')
     const url = `${base}${DRS_API_PATH}${query}`
     let response: Response
     try {
@@ -159,6 +162,8 @@ export class DrsCorpusSource {
     to?: number
     sortBy?: 'relevance' | 'time'
     limit?: number
+    /** 同源 Host 覆盖（转发调用方请求头；优先于装配 baseUrl）。 */
+    atHost?: string
   }): Promise<{
     sessionId: string
     title: string
@@ -178,7 +183,7 @@ export class DrsCorpusSource {
     if (request.to !== undefined) params.set('to', String(request.to))
     if (request.sortBy === 'time') params.set('sort', 'time')
     if (request.limit !== undefined) params.set('limit', String(request.limit))
-    const body = await this.getJson(`?${params.toString()}`)
+    const body = await this.getJson(`?${params.toString()}`, request.atHost)
     const hits = Array.isArray(body['hits']) ? body['hits'] as Record<string, unknown>[] : []
     return hits.map(row => ({
       sessionId: String(row['session_id'] ?? ''),
@@ -192,9 +197,9 @@ export class DrsCorpusSource {
   }
 
   /** 可性探针（op=status）：硬依赖预检/降级提示用；失败返回 false。 */
-  async probe(): Promise<boolean> {
+  async probe(atHost?: string): Promise<boolean> {
     try {
-      await this.getJson('?op=status')
+      await this.getJson('?op=status', atHost)
       return true
     } catch {
       return false
