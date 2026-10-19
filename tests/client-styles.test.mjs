@@ -98,20 +98,34 @@ assert.deepEqual(
 
 /** ------------------------------------------- the settings bindings have owners */
 
-// Merged package: TWO subdomain cards, each entry/card pair reads ONE binding.
-// The legacy fallback binds both namespaces (`session-steward` + `switch-search`);
-// on 0.1.7 configForms keys both by the single profile entry id.
+// beta.18 桥重构后：legacy `settingsScope.bind` 是数据死路（台账 A2），
+// 两子域各自的读取链是 configForms 原生句柄 → 失败落 webServer 设置桥
+// （bridge-scope.ts）。断言意图不变：每块子域卡/入口恰好一个作用域绑定。
 const indexSource = sources.get(INDEX_FILE)
-// 命名空间以常量注入（STEWARD_SETTINGS_NAMESPACE / SWITCH_SEARCH_SETTINGS_NAMESPACE），
-// 按常量名断言而不是字面量。
-const legacyBinds = indexSource.match(/\.bind<[^>]+>\(\{ namespace: (STEWARD|SWITCH)_/g) ?? []
+const bridgeSource = sources.get('bridge-scope.ts')
+assert.ok(bridgeSource !== undefined, 'bridge-scope.ts must exist')
+
+const fallbackBindings = indexSource.match(/withBridgeFallback\(/g) ?? []
 assert.equal(
-  legacyBinds.length,
+  fallbackBindings.length,
   2,
-  `both subdomains must have exactly one legacy namespace bind each; found ${legacyBinds.length}: ${JSON.stringify(legacyBinds)}`,
+  `both subdomains must have exactly one fallback binding each; found ${fallbackBindings.length}`,
 )
-assert.ok(indexSource.includes('{ namespace: STEWARD_SETTINGS_NAMESPACE }'), 'the steward subdomain must bind session-steward')
-assert.ok(indexSource.includes('{ namespace: SWITCH_SEARCH_SETTINGS_NAMESPACE }'), 'the search subdomain must bind switch-search')
+assert.equal(
+  (indexSource.match(/stewardBridgeScope\(\)/g) ?? []).length,
+  1,
+  'the steward subdomain must bind its bridge scope exactly once',
+)
+assert.equal(
+  (indexSource.match(/searchBridgeScope\(\)/g) ?? []).length,
+  1,
+  'the search subdomain must bind its bridge scope exactly once',
+)
+
+// 存储键稳定承诺（bridge-scope.ts L19 注释）：命名空间字面量各就一位。
+assert.ok(/const STEWARD_NS = 'session-steward'/.test(bridgeSource), 'the steward subdomain must bind session-steward')
+assert.ok(/const SEARCH_NS = 'switch-search'/.test(bridgeSource), 'the search subdomain must bind switch-search')
+
 assert.equal(
   (indexSource.match(/configForms\?\.get/g) ?? []).length,
   2,

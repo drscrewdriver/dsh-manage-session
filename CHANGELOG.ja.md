@@ -1,5 +1,27 @@
 # 変更履歴
 
+## 0.5.5 (2026-10-19)
+
+### 修正 —— issue #1：hollow セッションが増分同期で永久に補録されない
+- スキップ判定を「version 一致ならスキップ」から「version 一致かつ本文あり（または再読込で空であることが確認済み）」に強化：
+  `sessions` 行はあるが `docs` が 0 件の hollow セッションは次の poll で補録され、全文検索から永久に姿を消さなくなる。
+  アーカイブ補完ループも同意味に強化（legacy な header のみのアーカイブ行は R1 に従い本文を補完）。
+- 索引可能なテキストを一切含まない空セッションは初回再読込後にプロセス内 confirmedEmpty キャッシュへ登録され、
+  ホットループしない（宿主再起動後は各路最大 1 回の再読込のみ）。
+
+### 修正 —— issue #1 コメント：rebuild/インポートの swap 後のインデックス破損
+- swap ウィンドウで主ファイル隣の `-wal`/`-shm` を主ファイルとともに archive へ移行
+  （主ファイルが無い孤児残留は直接クリーンアップ）。同名で入れ替わる新データベースが
+  旧データベースの WAL をリプレイして `database disk image is malformed` 化する経路を断った。
+- swap 後に `PRAGMA integrity_check` ゲートを追加：非 ok なら破損データベースを `.corrupt` へ改名し
+  最新の archive から自動ロールバックして再開、rebuild state は error（「インデックス破損」を「前回スナップショットへ復帰」に格下げ）。
+- `pruneArchives` は archive 削除時にその sidecar ファイルも削除する。
+
+### 新規 —— 可観測性
+- `importIntoIndex` は空 docs のスナップショット記録に警告を残す（強制拒否はしない。修正後はこの種の行が次の同期で補完される）。
+- 同期状態に `hollow` カウント（補完後も「header のみ」行の数）を追加。sync pass ログと index-status 面に表示。
+  エンジンの能力面に `hasSessionDocs` / `listHollowSessions` / `integrityCheck` を追加。
+
 ## 0.4.8
 
 ### 修正 —— ST1：変換が第一-party プロデューサー名でホストと食い違う問題

@@ -1,5 +1,27 @@
 # 변경 이력
 
+## 0.5.5 (2026-10-19)
+
+### 수정 —— issue #1: hollow 세션이 증분 동기화에서 영원히 보완 색인되지 않음
+- 스킵 판정을 “version 일치하면 스킵”에서 “version 일치 + 본문 존재(또는 재읽어들임 후 비었음을 확인)”로 강화:
+  `sessions` 행은 있으나 `docs`가 0개인 hollow 세션은 다음 poll에서 보완 색인되어 전문 검색에서 영구히 사라지지 않는다.
+  아카이브 보완 루프도 같은 의미로 강화(header뿐인 legacy 아카이브 행은 R1에 따라 본문을 보완).
+- 색인 가능 텍스트가 전혀 없는 빈 세션은 첫 재읽어들임 후 프로세스 내 confirmedEmpty 캐시에 등록되어
+  핫 루프하지 않는다(호스트 재시동 후 각 최대 1회 재읽어들임만).
+
+### 수정 —— issue #1 댓글: rebuild/가져오기 swap 후 인덱스 손상
+- swap 창에서 메인 파일 옆의 `-wal`/`-shm`을 메인 파일과 함께 archive로 이동
+  (메인 파일 없는 고아 잔류는 바로 정리). 같은 이름으로 교체된 새 데이터베이스가
+  구 데이터베이스의 WAL을 리플레이해 `database disk image is malformed`가 되는 경로를 차단했다.
+- swap 후 `PRAGMA integrity_check` 게이트 추가: ok가 아니면 손상된 데이터베이스를 `.corrupt`로 이름 바꾸고
+  최신 archive에서 자동 롤백 후 다시 열며, rebuild state는 error(“인덱스 손상”을 “마지막 스냅샷으로 복구”로 격하).
+- `pruneArchives`는 archive 삭제 시 해당 sidecar 파일도 함께 삭제한다.
+
+### 신규 —— 관측성
+- `importIntoIndex`는 빈 docs 스냅샷 기록에 경고 로그를 남긴다(강제 거부는 하지 않음, 수정 후 이런 행은 다음 동기화에서 보완).
+- 동기화 상태에 `hollow` 카운트(보완 후에도 “header뿐”인 행 수) 추가. sync pass 로그와 index-status면에 표시.
+  엔진 능력면에 `hasSessionDocs` / `listHollowSessions` / `integrityCheck` 추가.
+
 ## 0.4.8
 
 ### 수정 —— ST1：변환이 제1자 프로듀서명에서 호스트와 불일치
