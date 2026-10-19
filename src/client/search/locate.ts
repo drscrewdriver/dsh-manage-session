@@ -20,10 +20,10 @@ import type { HostContentHit } from './host-api.ts'
 const DRS_ROUTE = '/api/dsh-reference-session'
 
 /** 定位总超时（打开会话后 DOM 渲染窗口）。 */
-const LOCATE_TIMEOUT_MS = 5_000
+const LOCATE_TIMEOUT_MS = 6_000
 
-/** 高亮驻留时长后自动摘除。 */
-const FLASH_MS = 4_000
+/** 高亮驻留时长后自动摘除（面板不自动收起——留驻到用户关面板后仍能看到落点）。 */
+const FLASH_MS = 6_000
 
 /** needle 下限——短于此值的行（"好的"）歧义面太大，不值得定位。 */
 const MIN_NEEDLE_CHARS = 12
@@ -72,18 +72,28 @@ export function resolveNeedle(row: LocateRowFace | undefined): string | null {
   return null
 }
 
-/** 找行结果：命中元素与其最短包含文本者（tightest container）。 */
-function findTightElement(root: ParentNode, needle: string): Element | null {
+/** 正文候选标签：只取消息渲染会用的块级/内联代码标签——不含 div/span，
+ * 否则搜索面板自己的结果行（dsws_snippet 的 span，文本就含 needle 前缀）会抢先命中。 */
+const MESSAGE_TAGS = 'p, li, pre, blockquote, h1, h2, h3, h4, td, code'
+
+/**
+ * 找正文行：多义时取 DOM 最深者（段落本体而非包裹层）；**排除插件自家
+ * 子树**（dsws_ 前缀类与任何 role=dialog 弹层）——面板行/管理台行都是
+ * 目标文本的镜像，绝不允许当作跳转目的地。
+ */
+function findMessageElement(root: ParentNode, needle: string): Element | null {
   let best: Element | null = null
-  let bestLen = Number.POSITIVE_INFINITY
-  const candidates = root.querySelectorAll('p, li, pre, blockquote, h1, h2, h3, h4, td, code, div, span')
-  for (const el of Array.from(candidates)) {
+  let bestDepth = -1
+  for (const el of Array.from(root.querySelectorAll(MESSAGE_TAGS))) {
     const text = el.textContent
     if (text === null) continue
-    if (text.length >= bestLen) continue // 短文本先排除：只可能更紧
-    if (normalizeForMatch(text).includes(needle)) {
+    if (el.closest('[class*="dsws_"], [role="dialog"]') !== null) continue
+    if (!normalizeForMatch(text).includes(needle)) continue
+    let depth = 0
+    for (let n: Node | null = el.parentElement; n !== null; n = n.parentElement) depth += 1
+    if (depth > bestDepth) {
       best = el
-      bestLen = text.length
+      bestDepth = depth
     }
   }
   return best
@@ -132,7 +142,7 @@ export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}):
     if (needle === null) { log(`locate: skip row seq=${String(hit.seq)} (shadowed/短文本/无行)`); return false }
 
     const deadline = Date.now() + (env.timeoutMs ?? LOCATE_TIMEOUT_MS)
-    const attempt = (): Element | null => findTightElement(doc.body ?? doc, needle)
+    const attempt = (): Element | null => findMessageElement(doc.body ?? doc, needle)
     let found = attempt()
     if (found === null) {
       // DOM 未就绪：MutationObserver 防抖轮询到 deadline（打开会话渲染窗口）。
