@@ -1,12 +1,16 @@
 /**
- * 命中定位臂（B 路线，T7.4）：内容搜索点击打开会话后，把宿主会话视图 DOM
+ * 命中定位臂（B 路线 v3，T7.4）：内容搜索点击打开会话后，把宿主会话视图 DOM
  * 里对应的那一行滚进视口并瞬时高亮。
  *
  * 前提实证（0.2.1 宿主前端包扫描）：会话列表**无虚拟化**（无 virtuoso/
  * react-window 指纹，IntersectionObserver 仅做 sticky 标题与入视口激活），
- * 打开会话后历史行全量在 DOM——本臂只做「找行+滚动」，不做预渲染。宿主导航
- * 接口面无消息锚点（uiWorkspace.openSession(SessionTarget) 全签名），DOM
- * 文本匹配是唯一通路；一切失败静默退化为「仅打开」（绝不抛、绝不遮主流程）。
+ * 打开会话后历史行全量在 DOM。宿主导航接口面无消息锚点
+ * （uiWorkspace.openSession(SessionTarget) 全签名），DOM 文本匹配是唯一通路；
+ * 一切失败静默退化为「仅打开」（绝不抛、绝不遮主流程）。
+ *
+ * v2 教训（真机「还停在底部」）：一次性 scrollIntoView 会被宿主会话打开后
+ * 的贴底/滚动恢复覆盖——v3 改「巡逻-驻留」模型：每 TICK 重定位+补滚，
+ * 目标行稳定驻留视口 STICK_MS 后才打高亮；用户手动滚动立即让位。
  *
  * 数据面：同源 GET /api/dsh-reference-session?op=session&session=<id>
  * ——行含 seq/text/search_text/surface_text/on_surface/compressed：
@@ -20,9 +24,9 @@ import type { HostContentHit } from './host-api.ts'
 const DRS_ROUTE = '/api/dsh-reference-session'
 
 /** 定位总超时（打开会话后 DOM 渲染窗口）。 */
-const LOCATE_TIMEOUT_MS = 6_000
+const LOCATE_TIMEOUT_MS = 8_000
 
-/** 高亮驻留时长后自动摘除（面板不自动收起——留驻到用户关面板后仍能看到落点）。 */
+/** 高亮驻留时长后自动摘除。 */
 const FLASH_MS = 6_000
 
 /** needle 下限——短于此值的行（"好的"）歧义面太大，不值得定位。 */
@@ -30,6 +34,15 @@ const MIN_NEEDLE_CHARS = 12
 
 /** needle 上限——取前缀足够唯一，过长整串匹配反而更易被渲染差异打断。 */
 const MAX_NEEDLE_CHARS = 80
+
+/** 驻留确认窗口：目标行在视口内稳定停留这么久才算跳转成功。 */
+const STICK_MS = 900
+
+/** 巡逻间隔：会话重渲染会换 DOM 节点，每轮重新定位。 */
+const TICK_MS = 350
+
+/** 定位行在视口内的判定余量（顶部允许略出屏，代码块开头行高度不定）。 */
+const VISIBILITY_SLACK = 40
 
 /** 归一化/取 needle 用的一个 DRS 段行（wire 蛇形，只声明消费字段）。 */
 export interface LocateRowFace {
@@ -119,19 +132,29 @@ function flashElement(el: Element): void {
 export interface LocateEnv {
   fetchImpl?: typeof fetch
   doc?: Document
+  win?: Window
   timeoutMs?: number
   log?: (message: string) => void
 }
 
+/** 目标行是否基本完整落在视口内（巡逻驻留判定）。 */
+function inViewport(el: Element, win: Window): boolean {
+  const rect = el.getBoundingClientRect()
+  const vh = win.innerHeight || (el.ownerDocument.documentElement.clientHeight || 0)
+  return rect.top >= -VISIBILITY_SLACK && rect.bottom <= vh + VISIBILITY_SLACK
+}
+
 /**
- * 主管线：拉 DRS 段行 → 选 needle → 轮询宿主 DOM → scrollIntoView+高亮。
+ * 主管线：拉 DRS 段行 → 选 needle → 巡逻宿主 DOM 补滚 → 驻留后高亮。
  * fire-and-forget 语义：任何一步不满足都 resolve(false)，从不抛。
  */
 export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}): Promise<boolean> {
   const fetchImpl = env.fetchImpl ?? globalThis.fetch
   const doc = env.doc ?? (typeof document === 'undefined' ? undefined : document)
   if (doc === undefined) return false
-  const log = env.log ?? (() => {})
+  const win = env.win ?? doc.defaultView ?? (typeof window === 'undefined' ? undefined : window)
+  if (win === undefined) return false
+  const log = env.log ?? ((message: string): void => { console.debug(`[dsh-session-steward] ${message}`) })
   try {
     const response = await fetchImpl(`${DRS_ROUTE}?op=session&session=${encodeURIComponent(hit.sessionId)}`)
     if (!response.ok) { log(`locate: drs http ${String(response.status)}`); return false }
@@ -141,38 +164,42 @@ export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}):
     const needle = resolveNeedle(row)
     if (needle === null) { log(`locate: skip row seq=${String(hit.seq)} (shadowed/短文本/无行)`); return false }
 
-    const deadline = Date.now() + (env.timeoutMs ?? LOCATE_TIMEOUT_MS)
-    const attempt = (): Element | null => findMessageElement(doc.body ?? doc, needle)
-    let found = attempt()
-    if (found === null) {
-      // DOM 未就绪：MutationObserver 防抖轮询到 deadline（打开会话渲染窗口）。
-      found = await new Promise<Element | null>((resolve) => {
-        let settled = false
-        let debounce: ReturnType<typeof setTimeout> | undefined
-        const finish = (el: Element | null): void => {
-          if (settled) return
-          settled = true
-          observer.disconnect()
-          if (timer !== undefined) clearTimeout(timer)
-          if (debounce !== undefined) clearTimeout(debounce)
-          resolve(el)
+    const startedAt = Date.now()
+    const deadline = startedAt + (env.timeoutMs ?? LOCATE_TIMEOUT_MS)
+    let lastScrollAt = 0
+    let userTookOver = false
+    const USER_EVENTS = ['wheel', 'touchstart', 'keydown'] as const
+    const onUser = (): void => { userTookOver = true }
+
+    return await new Promise<boolean>((resolve) => {
+      const finish = (ok: boolean, why: string): void => {
+        clearInterval(ticker)
+        for (const ev of USER_EVENTS) win.removeEventListener(ev, onUser)
+        log(`${why}: seq=${String(hit.seq)} ${hit.sessionId.slice(0, 12)} +${String(Date.now() - startedAt)}ms`)
+        resolve(ok)
+      }
+      for (const ev of USER_EVENTS) win.addEventListener(ev, onUser, { passive: true, once: true })
+      const ticker = setInterval(() => {
+        if (userTookOver) { finish(false, 'yield user'); return }
+        if (Date.now() >= deadline) { finish(false, 'locate timeout'); return }
+        const el = findMessageElement(doc.body ?? doc, needle)
+        if (el === null) return // DOM 未就绪/会话还在切换：下一轮再找
+        if (inViewport(el, win)) {
+          // 从未滚过且本来就可见（同会话当前视口）=直达；否则须驻留过 STICK 窗。
+          if (lastScrollAt === 0 || Date.now() - lastScrollAt >= STICK_MS) {
+            flashElement(el)
+            finish(true, 'located')
+          }
+          return
         }
-        const observer = new MutationObserver(() => {
-          if (debounce !== undefined) clearTimeout(debounce)
-          debounce = setTimeout(() => {
-            const el = attempt()
-            if (el !== null) finish(el)
-          }, 250)
-        })
-        observer.observe(doc.body ?? doc, { childList: true, subtree: true })
-        const timer = setTimeout(() => { finish(null) }, deadline - Date.now())
-      })
-    }
-    if (found === null) { log(`locate: needle not rendered in ${String(env.timeoutMs ?? LOCATE_TIMEOUT_MS)}ms`); return false }
-    found.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    flashElement(found)
-    log(`located: seq=${String(hit.seq)} in ${hit.sessionId.slice(0, 12)}`)
-    return true
+        // 目标不在视口：若距上次补滚超一个 tick，重新滚（behavior=auto——smooth
+        // 动画会被宿主随后的贴底/恢复打断且互相取消）。会话重渲染换节点也走这条。
+        if (Date.now() - lastScrollAt >= TICK_MS) {
+          el.scrollIntoView({ block: 'center', behavior: 'auto' })
+          lastScrollAt = Date.now()
+        }
+      }, TICK_MS)
+    })
   } catch (err) {
     log(`locate error(silent): ${String(err instanceof Error ? err.message : err)}`)
     return false

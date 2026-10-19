@@ -331,6 +331,8 @@ function SwitchPanel({
   // 日期范围（R6）:YYYY-MM-DD,空串 = 不限;结束日含当天（宿主半排他上界 +1d）。
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  // 定位诊断徽标（T7.4 v3）：点过命中行的定位态 ⏳/✓/✗——「停在底部」不再靠猜。
+  const [locateStatus, setLocateStatus] = useState<Record<string, 'pending' | 'ok' | 'fail'>>({})
   const [sortBy, setSortByState] = useState<HostSortMode>(readStoredSort)
   const setSortBy = (next: HostSortMode): void => {
     writeStoredSort(next)
@@ -565,7 +567,13 @@ function SwitchPanel({
         className: 'dsws_row',
         // B 路线定位臂（T7.4）：先开会话，再异步把命中行滚进视口高亮；
         // 定位失败静默——行为与接臂前逐行一致（仅打开）。
-        onClick: () => { open(item.sessionId); void locateSearchHit(item) },
+        onClick: () => {
+          open(item.sessionId)
+          setLocateStatus(s => ({ ...s, [item.sessionId]: 'pending' }))
+          void locateSearchHit(item).then(ok => {
+            setLocateStatus(s => ({ ...s, [item.sessionId]: ok ? 'ok' : 'fail' }))
+          })
+        },
       }, [
         createElement('span', { key: 't', className: 'dsws_rowTitle' }, [
           createElement('span', { key: 'x', className: 'dsws_titleText' }, item.title || translate(t, 'panel.untitled')),
@@ -574,6 +582,12 @@ function SwitchPanel({
           // the one the title rows already show. Ordering rows by a time the
           // rows never display is illegible: you cannot tell what the sort did.
           createElement('span', { key: 'time', className: 'dsws_tag' }, fmtTime(item.updatedAt)),
+          ...(locateStatus[item.sessionId] === undefined ? [] : [createElement('span', {
+            key: 'loc', className: 'dsws_tag',
+            title: locateStatus[item.sessionId] === 'pending' ? '定位巡逻中'
+              : locateStatus[item.sessionId] === 'ok' ? '已跳转到命中行'
+                : '未能定位（行未渲染/文本被拆分/超时）',
+          }, locateStatus[item.sessionId] === 'pending' ? '⏳' : locateStatus[item.sessionId] === 'ok' ? '✓' : '✗')]),
         ]),
         createElement('span', { key: 's', className: 'dsws_snippet' }, item.snippet || translate(t, 'panel.noText')),
       ])))))
