@@ -565,7 +565,7 @@ function SwitchPanel({
         className: 'dsws_row',
         // B 路线定位臂（T7.4）：先开会话，再异步把命中行滚进视口高亮；
         // 定位失败静默——行为与接臂前逐行一致（仅打开）。
-        onClick: () => { open(item.sessionId); void locateSearchHit(item) },
+        onClick: () => { open(item.sessionId); void locateSearchHit(item); onClose() },
       }, [
         createElement('span', { key: 't', className: 'dsws_rowTitle' }, [
           createElement('span', { key: 'x', className: 'dsws_titleText' }, item.title || translate(t, 'panel.untitled')),
