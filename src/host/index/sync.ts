@@ -53,6 +53,36 @@ export interface SwitchArchiveSource {
   readonly archivedSessionIds: readonly string[]
 }
 
+/** DRS 语料头(依赖倒置端口;真身 = drs-source.ts 的 DrsCorpusSource)。 */
+export interface SwitchDrsCorpusHead {
+  sessionId: string
+  /** 水位代理 = DRS sessions.artifact_mtime_ms(日志重写必 bump)。 */
+  version: number
+  title: string
+  cwd: string
+  updatedAt: number
+  archived: boolean
+}
+
+/** DRS 检索臂文档(surface 已折算引擎字符串域;切分由引擎重算)。 */
+export interface SwitchDrsCorpusDoc {
+  seq: number
+  type: string
+  surface: string
+  time: number
+  text: string
+}
+
+/**
+ * DRS 语料源端口(T7.1):corpusSource='drs' 时语料改从
+ * dsh-reference-session 投影库取,docs 直插引擎;不可达时整轮回退原生
+ * sessionQuery + 文件兜底链路。单测注入普通对象。
+ */
+export interface SwitchDrsCorpusSource {
+  listSessions(): Promise<readonly SwitchDrsCorpusHead[]>
+  readSession(sessionId: string): Promise<{ head: SwitchDrsCorpusHead; docs: readonly SwitchDrsCorpusDoc[] } | undefined>
+}
+
 /**
  * One watermark syncer bound to one open engine. `poll()` is re-entrant-safe:
  * overlapping calls collapse into the running pass.
@@ -97,6 +127,11 @@ export class SwitchWatermarkSync {
      * 的老会话,快照服务又整片不可用时,这是最后兜底。
      */
     private readonly readProjectionTitle?: (sessionId: string) => string,
+    /**
+     * DRS 语料源（可选,T7.1）:提供时每轮先走 DRS 轮(docs 直插);DRS 整轮
+     * 失败（网络/路由/包络）自动回退原生 sessionQuery + 文件兜底。
+     */
+    private readonly drsSource?: SwitchDrsCorpusSource,
   ) {
 
   }
@@ -157,6 +192,16 @@ export class SwitchWatermarkSync {
     this.state.state = 'syncing'
     const passStart = Date.now()
     try {
+      // DRS 语料轮(T7.1):corpusSource='drs' 时语料从 dsh-reference-session
+      // 投影库取(docs 直插)。整轮失败(网络/路由/包络)→ 回退原生链路,一次
+      // 轮询永远有产出;水位语义切换的首轮全量重灌是有意的(mode switch 代价)。
+      if (this.drsSource !== undefined) {
+        try {
+          return await this.runDrsPass(passStart)
+        } catch (drsError) {
+          this.log?.(`DRS corpus pass failed, falling back to native sessionQuery: ${String(drsError instanceof Error ? drsError.message : drsError)}`)
+        }
+      }
       const records = await this.sessionQuery.listSessions()
       this.state.total = records.length
       // 官方归档集合：纯 flag 翻转（R1 合表复用语义——归档保留 docs,恢复不重灌）。
@@ -271,6 +316,71 @@ export class SwitchWatermarkSync {
       this.state.error = String(err instanceof Error ? err.message : err)
       this.log?.(`sync pass FAILED: ${this.state.error}`)
     }
+    return this.snapshot()
+  }
+
+  /**
+   * DRS 语料轮(T7.1):语料头从 DRS `op=sessions` 分页拉取,水位
+   * diff(version=artifact_mtime_ms)后按会话 `op=session&fields=search`
+   * 取检索臂 docs 直插引擎(upsertSessionDocs)。归档集合改用 DRS 行的
+   * archived 旗标(DRS sync 本就只读跟随 workspace.json,同源);标题直接
+   * 采 DRS 行(投影侧同一 extractTitleFromEvents 视界),不再走快照精修。
+   * 每会话失败隔离语义与原生轮一致;无可索引文本仍进 confirmedEmpty 缓存。
+   */
+  private async runDrsPass(passStart: number): Promise<SwitchSyncState> {
+    const source = this.drsSource
+    if (source === undefined) throw new Error('DRS corpus source unavailable')
+    const heads = await source.listSessions()
+    this.state.total = heads.length
+    const archivedSet = new Set(heads.filter(head => head.archived).map(head => head.sessionId))
+    this.engine.setArchived(archivedSet)
+    const failures: { sessionId: string; error: string }[] = []
+    let updated = 0
+    for (const head of heads) {
+      const existing = this.engine.getSession(head.sessionId)
+      const emptyKey = SwitchWatermarkSync.emptyKey(head.sessionId, head.version)
+      if (existing !== undefined && existing.version === head.version
+        && (this.confirmedEmpty.has(emptyKey) || this.engine.hasSessionDocs(head.sessionId))) continue
+      try {
+        const session = await source.readSession(head.sessionId)
+        if (session === undefined) {
+          failures.push({ sessionId: head.sessionId, error: 'DRS session detail unavailable' })
+          continue
+        }
+        const produced = this.engine.upsertSessionDocs({
+          sessionId: head.sessionId,
+          version: head.version,
+          title: session.head.title,
+          cwd: session.head.cwd,
+          updatedAt: session.head.updatedAt,
+          // 插行时带上归档标记（原生轮同款）——免掉"插行要等下一轮
+          // setArchived 才翻 flag"的单轮滞后。
+          archived: head.archived,
+          docs: session.docs,
+        })
+        if (produced === 0) this.confirmedEmpty.add(emptyKey)
+        else this.confirmedEmpty.delete(emptyKey)
+        updated += 1
+      } catch (err) {
+        failures.push({ sessionId: head.sessionId, error: `drs: ${String(err instanceof Error ? err.message : err)}` })
+      }
+    }
+    // 删除扫尾与原生轮同款:DRS 语料集里消失且未归档的行移除(DRS 侧保留
+    // 已删目录的行时,这里自然不触发——删除真值仍以语料集为准)。
+    const corpusIds = new Set(heads.map(head => head.sessionId))
+    for (const indexed of this.engine.listIndexedSessions()) {
+      if (!corpusIds.has(indexed.sessionId) && !archivedSet.has(indexed.sessionId)) {
+        this.engine.removeSession(indexed.sessionId)
+      }
+    }
+    this.state.updated = updated
+    this.state.failures = failures
+    this.state.indexed = this.engine.countSessions()
+    this.state.hollow = this.engine.listHollowSessions().length
+    this.state.lastSyncAt = Date.now()
+    this.state.state = 'idle'
+    this.state.error = undefined
+    this.log?.(`sync pass(DRS): scanned=${this.state.total} updated=${updated} archived=${archivedSet.size} failures=${failures.length} indexed=${this.state.indexed} hollow=${this.state.hollow} duration=${Date.now() - passStart}ms driver=${this.engine.driverLabel}`)
     return this.snapshot()
   }
 

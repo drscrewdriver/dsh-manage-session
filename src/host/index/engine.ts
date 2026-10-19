@@ -403,6 +403,62 @@ export class SwitchIndexEngine {
     })
   }
 
+  /**
+   * Insert or replace one session from corpus-source documents (T7.1 DRS
+   * 语料源):docs 已由语料源抽好(surface 字符串),切分仍由本引擎重算。
+   * 与 importSessionDocs 的三点差异,均为检索排序/水印所需:cwd 与
+   * updated_at 直写(日期过滤/时间排序键);标题空串保留旧行(upsertSession
+   * 同款 CASE——DRS 对老会话可能给不出标题,不能抹掉既有精修);归档旗标
+   * 冲突时不动(翻转仍归 setArchived)。
+   * @returns 落库 docs 数(0 = 该会话无可索引文本,合法终态)。
+   */
+  upsertSessionDocs(input: {
+    sessionId: string
+    version: number
+    title?: string
+    cwd?: string
+    updatedAt?: number
+    archived?: boolean
+    docs: readonly { seq: number; type: string; surface: string; time: number; text: string }[]
+  }): number {
+    const db = this.requireDb()
+    return this.withWriteTx(() => {
+      this.deleteSessionFts(db, input.sessionId)
+      db.prepare('DELETE FROM docs WHERE session_id = ?').run(input.sessionId)
+      const insertDoc = db.prepare(`
+        INSERT INTO docs (session_id, seq, type, surface, time, text, index_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      const insertFts = db.prepare('INSERT INTO docs_fts (rowid, index_text) VALUES (?, ?)')
+      for (const doc of input.docs) {
+        const indexText = segmentForIndex(doc.text)
+        const result = insertDoc.run(
+          input.sessionId, doc.seq, doc.type, doc.surface, doc.time, doc.text, indexText,
+        )
+        insertFts.run(Number(result.lastInsertRowid), indexText)
+      }
+      db.prepare(`
+        INSERT INTO sessions (session_id, version, title, cwd, updated_at, indexed_at, archived)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+          version = excluded.version,
+          title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions.title END,
+          cwd = excluded.cwd,
+          updated_at = excluded.updated_at,
+          indexed_at = excluded.indexed_at
+      `).run(
+        input.sessionId,
+        input.version,
+        input.title ?? '',
+        input.cwd ?? '',
+        input.updatedAt ?? 0,
+        Date.now(),
+        input.archived === true ? 1 : 0,
+      )
+      return input.docs.length
+    })
+  }
+
   /** Remove one session and its documents entirely. */
   removeSession(sessionId: string): void {
     const db = this.requireDb()

@@ -53,6 +53,7 @@ import { SwitchIndexEngine, type SwitchIndexContentType, type SwitchSearchSort }
 import { SwitchWatermarkSync, type SwitchSyncState } from './host/index/sync.ts'
 import { createArchiveSource, type SwitchArchiveDiagnostics } from './host/index/archive-source.ts'
 import { detectSteward } from './host/index/peers.ts'
+import { DrsCorpusSource, resolveDrsBaseUrl } from './host/index/drs-source.ts'
 // 归档集合的写方（prune）在管家子域：搜索子域只读归档集合把归档会话折进索引
 // 状态（单一写方，一个 owner —— 合并后 owner 就在本包 history 子域）。
 export { createArchiveSource, type SwitchArchiveDiagnostics } from './host/index/archive-source.ts'
@@ -163,6 +164,8 @@ export const Config = z.object({
   syncIntervalMs: withVolatile(z.number().default(30_000)),
   archiveKeep: withVolatile(z.number().default(2)),
   indexDir: withVolatile(z.string().default('')),
+  corpusSource: withVolatile(z.union(['native', 'drs']).default('native')),
+  drsBaseUrl: withVolatile(z.string().default('')),
 })
 
 /** 单次请求体的上限（防御无界读取）。 */
@@ -1100,6 +1103,8 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
     syncIntervalMs: readVolatileValue(config.syncIntervalMs) ?? SWITCH_DEFAULT_CONFIG.syncIntervalMs,
     archiveKeep: readVolatileValue(config.archiveKeep) ?? SWITCH_DEFAULT_CONFIG.archiveKeep,
     indexDir: readVolatileValue(config.indexDir) ?? SWITCH_DEFAULT_CONFIG.indexDir,
+    corpusSource: readVolatileValue(config.corpusSource) ?? SWITCH_DEFAULT_CONFIG.corpusSource,
+    drsBaseUrl: readVolatileValue(config.drsBaseUrl) ?? SWITCH_DEFAULT_CONFIG.drsBaseUrl,
   })
 
   const log = (message: string): void => {
@@ -1235,6 +1240,20 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
     }
   }
 
+  // DRS 语料源（T7.1）：corpusSource='drs' 时索引语料改从 dsh-reference-session
+  // 投影库取（docs 直插引擎）；DRS 不可达时同步轮内部整轮回退原生
+  // sessionQuery + 文件兜底。装配在 apply 期一次性成形——corpusSource 切换
+  // 重启后生效（水位语义切换本就伴随一轮全量重灌）。Host 头回显首个
+  // trustedHosts 条目：DRS 信任门是精确匹配，条目省略端口时 URL 带端口会失配。
+  const trustedHosts = webRuntime?.trustedHosts
+  const drsSource = initial.corpusSource === 'drs'
+    ? new DrsCorpusSource({
+        baseUrl: resolveDrsBaseUrl(initial.drsBaseUrl, trustedHosts),
+        hostHeader: trustedHosts !== undefined && trustedHosts.length > 0 ? trustedHosts[0] : undefined,
+        log,
+      })
+    : undefined
+
   const indexState: SwitchIndexServiceState = {
     engine,
     archiveReader,
@@ -1247,7 +1266,7 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
       readTitleSnapshots: sessionQuery === undefined
         ? undefined
         : (ids) => sessionQuery.readTitleSnapshots(ids),
-    }, () => ({ archivedSessionIds: archiveReader.read().ids }), log, readSessionFromFile, readProjectionTitle),
+    }, () => ({ archivedSessionIds: archiveReader.read().ids }), log, readSessionFromFile, readProjectionTitle, drsSource),
     layout: indexLayout,
     rebuild: { state: 'idle', done: 0, total: 0, startedAt: 0, finishedAt: 0, failures: [] },
   }
