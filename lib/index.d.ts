@@ -1482,6 +1482,8 @@ declare class DrsCorpusSource {
     to?: number;
     sortBy?: 'relevance' | 'time';
     limit?: number;
+    /** 同源 Host 覆盖（转发调用方请求头；优先于装配 baseUrl）。 */
+    atHost?: string;
   }): Promise<{
     sessionId: string;
     title: string;
@@ -1492,7 +1494,7 @@ declare class DrsCorpusSource {
     snippet: string;
   }[]>;
   /** 可性探针（op=status）：硬依赖预检/降级提示用；失败返回 false。 */
-  probe(): Promise<boolean>;
+  probe(atHost?: string): Promise<boolean>;
 }
 //#endregion
 //#region src/host/index/rebuild.d.ts
@@ -2315,7 +2317,7 @@ interface SearchRuntime {
   } | undefined>;
 }
 /** JSON 面的搜索子域方法分发（index-export/import 走原始体，在路由层特判）。 */
-declare function handleIndexMethod(method: string, payload: unknown, srt: SearchRuntime): Promise<unknown>;
+declare function handleIndexMethod(method: string, payload: unknown, srt: SearchRuntime, requestHost?: string): Promise<unknown>;
 declare function handleMethod(method: string, payload: unknown, runtime: StewardRuntime): Promise<unknown>;
 /**
  * 插件主体：装配运行时、挂载两条 fenced 路由与索引生命周期。

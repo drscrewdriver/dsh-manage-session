@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom'
 import type { SwitchSearchConfig } from '../../config.ts'
 // 0.1.7：插件族共用设置节（dsh-thinking-levels 持有并声明 `dsh-family.tab`
 // 子席位；本仓不依赖 ui-slots 类型包，席位键以运行时 children 表为准）。
+import { locateSearchHit } from './locate.ts'
 import { callHost, callHostAny, type HostContentHit, type HostIndexStatus, type HostSessionItem, type HostSortMode, type SwitchSessionsService, type SwitchUiWorkspaceService } from './host-api.ts'
 import type { SwitchCardScope } from './card.tsx'
 import { translate, type LocaleKey } from './locales.ts'
@@ -562,7 +563,9 @@ function SwitchPanel({
       }, activeContent.items.slice(0, 200).map(item => createElement('li', { key: item.sessionId, role: 'option' }, createElement('button', {
         type: 'button',
         className: 'dsws_row',
-        onClick: () => { open(item.sessionId) },
+        // B 路线定位臂（T7.4）：先开会话，再异步把命中行滚进视口高亮；
+        // 定位失败静默——行为与接臂前逐行一致（仅打开）。
+        onClick: () => { open(item.sessionId); void locateSearchHit(item) },
       }, [
         createElement('span', { key: 't', className: 'dsws_rowTitle' }, [
           createElement('span', { key: 'x', className: 'dsws_titleText' }, item.title || translate(t, 'panel.untitled')),
