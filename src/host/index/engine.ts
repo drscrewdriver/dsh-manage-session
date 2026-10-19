@@ -459,6 +459,44 @@ export class SwitchIndexEngine {
     })
   }
 
+  /**
+   * 会话头直写（DRS 直连时代的同步轮专用，T7.3）：只维护 sessions 元数据
+   * （水位/标题/目录/末时间/归档），**不碰 docs/docs_fts**——内容检索
+   * 已直连 dsh-reference-session（op=search&group=session），本地正文索引
+   * 退役，存量 docs 行自然老化不再新增。空标题保留旧行（同 upsertSessionDocs）。
+   */
+  upsertSessionHead(input: {
+    sessionId: string
+    version: number
+    title?: string
+    cwd?: string
+    updatedAt?: number
+    archived?: boolean
+  }): void {
+    const db = this.requireDb()
+    this.withWriteTx(() => {
+      db.prepare(`
+        INSERT INTO sessions (session_id, version, title, cwd, updated_at, indexed_at, archived)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+          version = excluded.version,
+          title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions.title END,
+          cwd = excluded.cwd,
+          updated_at = excluded.updated_at,
+          indexed_at = excluded.indexed_at,
+          archived = excluded.archived
+      `).run(
+        input.sessionId,
+        input.version,
+        input.title ?? '',
+        input.cwd ?? '',
+        input.updatedAt ?? 0,
+        Date.now(),
+        input.archived === true ? 1 : 0,
+      )
+    })
+  }
+
   /** Remove one session and its documents entirely. */
   removeSession(sessionId: string): void {
     const db = this.requireDb()

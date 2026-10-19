@@ -129,7 +129,7 @@ export class DrsCorpusSource {
     return heads
   }
 
-  /** 一个会话的检索臂 docs;DRS 无此会话(session:null)返回 undefined。 */
+  /** 一个会话的检索臂 docs；DRS 无此会话（session:null）返回 undefined。 */
   async readSession(sessionId: string): Promise<DrsCorpusSession | undefined> {
     const body = await this.getJson(`?op=session&session=${encodeURIComponent(sessionId)}&fields=search`)
     if (body['session'] === null || body['session'] === undefined) return undefined
@@ -142,5 +142,62 @@ export class DrsCorpusSource {
       text: String(row['search_text'] ?? ''),
     }))
     return { head, docs }
+  }
+
+  /**
+   * 分组内容搜索直连臂（op=search&group=session，DRS surface.searchGrouped 同构）：
+   * 会话分组/加权/过滤/锚定节选全部在 DRS 侧完成，本方法只搬 wire →
+   * 引擎命中形状（SwitchSearchHit 字段同名）。失败（网络/非 2xx/包络）直抛，
+   * 调用侧按硬依赖语义显式报错——**不回退本地索引**。
+   */
+  async searchGrouped(request: {
+    query: string
+    /** 原事件 type 列表（调用方展开粗类）；空=DRS 缺省 user+assistant。 */
+    kinds?: readonly string[]
+    archived?: 'active' | 'archived' | 'all'
+    from?: number
+    to?: number
+    sortBy?: 'relevance' | 'time'
+    limit?: number
+  }): Promise<{
+    sessionId: string
+    title: string
+    seq: number
+    type: string
+    time: number
+    updatedAt: number
+    snippet: string
+  }[]> {
+    const params = new URLSearchParams()
+    params.set('op', 'search')
+    params.set('group', 'session')
+    params.set('q', request.query)
+    if (request.kinds !== undefined && request.kinds.length > 0) params.set('kinds', request.kinds.join(','))
+    if (request.archived !== undefined) params.set('archived', request.archived)
+    if (request.from !== undefined) params.set('from', String(request.from))
+    if (request.to !== undefined) params.set('to', String(request.to))
+    if (request.sortBy === 'time') params.set('sort', 'time')
+    if (request.limit !== undefined) params.set('limit', String(request.limit))
+    const body = await this.getJson(`?${params.toString()}`)
+    const hits = Array.isArray(body['hits']) ? body['hits'] as Record<string, unknown>[] : []
+    return hits.map(row => ({
+      sessionId: String(row['session_id'] ?? ''),
+      title: String(row['title'] ?? ''),
+      seq: Number(row['seq'] ?? 0),
+      type: String(row['type'] ?? ''),
+      time: Number(row['time'] ?? 0),
+      updatedAt: Number(row['updated_at'] ?? 0),
+      snippet: String(row['snippet'] ?? ''),
+    }))
+  }
+
+  /** 可性探针（op=status）：硬依赖预检/降级提示用；失败返回 false。 */
+  async probe(): Promise<boolean> {
+    try {
+      await this.getJson('?op=status')
+      return true
+    } catch {
+      return false
+    }
   }
 }

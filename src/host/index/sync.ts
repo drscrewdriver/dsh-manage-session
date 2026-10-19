@@ -337,29 +337,19 @@ export class SwitchWatermarkSync {
     const failures: { sessionId: string; error: string }[] = []
     let updated = 0
     for (const head of heads) {
+      // T7.3 直连语义：DRS 轮只维护 sessions 头水位（标题/目录/末时间/归档）——
+      // 内容检索走 op=search&group=session 直连，本地 docs/docs_fts 退役不新增。
       const existing = this.engine.getSession(head.sessionId)
-      const emptyKey = SwitchWatermarkSync.emptyKey(head.sessionId, head.version)
-      if (existing !== undefined && existing.version === head.version
-        && (this.confirmedEmpty.has(emptyKey) || this.engine.hasSessionDocs(head.sessionId))) continue
+      if (existing !== undefined && existing.version === head.version) continue
       try {
-        const session = await source.readSession(head.sessionId)
-        if (session === undefined) {
-          failures.push({ sessionId: head.sessionId, error: 'DRS session detail unavailable' })
-          continue
-        }
-        const produced = this.engine.upsertSessionDocs({
+        this.engine.upsertSessionHead({
           sessionId: head.sessionId,
           version: head.version,
-          title: session.head.title,
-          cwd: session.head.cwd,
-          updatedAt: session.head.updatedAt,
-          // 插行时带上归档标记（原生轮同款）——免掉"插行要等下一轮
-          // setArchived 才翻 flag"的单轮滞后。
+          title: head.title,
+          cwd: head.cwd,
+          updatedAt: head.updatedAt,
           archived: head.archived,
-          docs: session.docs,
         })
-        if (produced === 0) this.confirmedEmpty.add(emptyKey)
-        else this.confirmedEmpty.delete(emptyKey)
         updated += 1
       } catch (err) {
         failures.push({ sessionId: head.sessionId, error: `drs: ${String(err instanceof Error ? err.message : err)}` })

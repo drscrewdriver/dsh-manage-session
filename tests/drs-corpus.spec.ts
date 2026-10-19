@@ -97,7 +97,7 @@ describe('DrsCorpusSource', () => {
 })
 
 describe('SwitchWatermarkSync DRS 轮', () => {
-  it('docs 直插引擎;中文+工具参数可搜;归档随 DRS 行;水位二轮零重读', async () => {
+  it('会话头直写(T7.3 轮语义):水位/归档随 DRS 行、零 detail 读、docs 不入本地索引', async () => {
     const engine = makeEngine()
     await engine.open()
     let reads = 0
@@ -130,14 +130,15 @@ describe('SwitchWatermarkSync DRS 轮', () => {
     const pass1 = await sync.poll()
     assert.equal(pass1.updated, 2)
     assert.equal(pass1.indexed, 2)
-    assert.equal(pass1.hollow, 1, '空 docs 会话是合法 hollow')
+    assert.equal(pass1.hollow, 2, 'header-only：全会话无 docs（合法 hollow）')
     assert.equal(engine.getSession('s-drs-1')?.version, 111)
     assert.equal(engine.getSession('s-drs-2')?.archived, true, '归档旗标随 DRS 行')
     assert.equal(engine.getSession('s-drs-1')?.updatedAt, 300, 'updated_at←last_time_ms(时间排序键)')
 
-    assert.ok(engine.search({ query: '投影同步' }).some(hit => hit.sessionId === 's-drs-1'), '中文命中 index_text')
-    assert.ok(engine.search({ query: '工具调用参数', types: ['tool'] }).length >= 1, '工具调用参数入检索域')
-    assert.ok(engine.search({ query: '工具调用参数' }).every(hit => hit.sessionId !== 's-drs-2'))
+    // T7.3 直连：DRS 轮不写 docs/docs_fts，本地引擎检索面恒空——内容搜索
+    // 走 DrsCorpusSource.searchGrouped（下方独立用例盖 wire 映射），头轮只管水位。
+    assert.equal(engine.search({ query: '投影同步' }).length, 0)
+    assert.equal(reads, 0, 'header 轮零 readSession')
 
     const readsBefore = reads
     const pass2 = await sync.poll()
@@ -146,7 +147,8 @@ describe('SwitchWatermarkSync DRS 轮', () => {
 
     heads[0]!.version = 999
     const pass3 = await sync.poll()
-    assert.equal(pass3.updated, 1, '版本推进 → 重读该会话')
+    assert.equal(pass3.updated, 1, '版本推进 → 直写会话头')
+    assert.equal(reads, 0, '版本推进也不 detail 读')
     engine.close()
   })
 
@@ -171,5 +173,42 @@ describe('SwitchWatermarkSync DRS 轮', () => {
     assert.ok(logs.some(line => line.includes('falling back to native')), '回退有日志')
     assert.ok(engine.search({ query: '回退内容' }).length >= 1)
     engine.close()
+  })
+})
+
+describe('DrsCorpusSource.searchGrouped(T7.3 直连臂)', () => {
+  it('参数构造与 wire→引擎命中形状映射', async () => {
+    let seenUrl = ''
+    const source = new DrsCorpusSource({
+      baseUrl: 'http://127.0.0.1:5990',
+      fetchImpl: (async (input: unknown) => {
+        seenUrl = String(input)
+        return jsonResponse({ ok: true, query: 'x', hits: [
+          { session_id: 's1', title: 'T', seq: 7, type: 'user/message', time: 100, updated_at: 200, snippet: '节选…' },
+        ] })
+      }) as unknown as typeof fetch,
+    })
+    const hits = await source.searchGrouped({
+      query: 'x', kinds: ['user/message', 'tool/call'],
+      archived: 'active', from: 1, to: 2, sortBy: 'time', limit: 5,
+    })
+    assert.ok(seenUrl.includes('op=search'), seenUrl)
+    assert.ok(seenUrl.includes('group=session'))
+    assert.ok(seenUrl.includes('kinds=user%2Fmessage%2Ctool%2Fcall'))
+    assert.ok(seenUrl.includes('archived=active'))
+    assert.ok(seenUrl.includes('sort=time'))
+    assert.deepEqual(hits, [{ sessionId: 's1', title: 'T', seq: 7, type: 'user/message', time: 100, updatedAt: 200, snippet: '节选…' }])
+  })
+  it('probe:包络 ok=true 报真、网络失败报假且不抛', async () => {
+    const up = new DrsCorpusSource({
+      baseUrl: 'http://x',
+      fetchImpl: (async () => jsonResponse({ ok: true, sessions: 3 })) as unknown as typeof fetch,
+    })
+    assert.equal(await up.probe(), true)
+    const down = new DrsCorpusSource({
+      baseUrl: 'http://x',
+      fetchImpl: (async () => { throw new Error('ECONNREFUSED') }) as unknown as typeof fetch,
+    })
+    assert.equal(await down.probe(), false)
   })
 })

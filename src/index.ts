@@ -49,7 +49,7 @@ import { decodeSessionLogFile } from './host/health/decode.ts'
 import { assessRepair, prescribe, quarantineProjectionCache } from './host/health/repair.ts'
 import { countCorpus, findSession, findSessionLog, scanSessions } from './host/health/scan.ts'
 import { gateSourceKind, migrateSessionSourceKind, readSourceKindFacts } from './host/health/source-kind.ts'
-import { SwitchIndexEngine, type SwitchIndexContentType, type SwitchSearchSort } from './host/index/engine.ts'
+import { SwitchIndexEngine, resolveTypes, type SwitchIndexContentType, type SwitchSearchSort } from './host/index/engine.ts'
 import { SwitchWatermarkSync, type SwitchSyncState } from './host/index/sync.ts'
 import { createArchiveSource, type SwitchArchiveDiagnostics } from './host/index/archive-source.ts'
 import { detectSteward } from './host/index/peers.ts'
@@ -164,7 +164,7 @@ export const Config = z.object({
   syncIntervalMs: withVolatile(z.number().default(30_000)),
   archiveKeep: withVolatile(z.number().default(2)),
   indexDir: withVolatile(z.string().default('')),
-  corpusSource: withVolatile(z.union(['native', 'drs']).default('native')),
+  corpusSource: withVolatile(z.union(['native', 'drs']).default('drs')),
   drsBaseUrl: withVolatile(z.string().default('')),
 })
 
@@ -502,17 +502,23 @@ async function contentSearch(
   } else {
     types = ['user', 'reply']
   }
-  const index = srt.index
-  if (index.engine.isOpen === false) {
-    return { ok: false, error: '独立索引未就绪：请在面板或设置中先建立索引（整理索引）' }
-  }
+  // T7.3 硬依赖直连臂：检索语义（会话分组/类型加权/表面与归档日期过滤/
+  // 锚定节选）全部在 dsh-reference-session 投影库侧完成（op=search&group=session，
+  // 语料已经过注入段剥离）。DRS 不可达 → 显式报错，**不回退本地索引**。
+  const kinds = resolveTypes(types)
   try {
-    return {
-      ok: true,
-      items: index.engine.search({ query, types, limit, sortBy, archived, from: fromMs, to: toMs }),
-    }
+    const items = await srt.drsSource.searchGrouped({
+      query,
+      kinds,
+      archived,
+      sortBy,
+      limit,
+      ...(fromMs === undefined ? {} : { from: fromMs }),
+      ...(toMs === undefined ? {} : { to: toMs }),
+    })
+    return { ok: true, items }
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err) }
+    return { ok: false, error: `dsh-reference-session 搜索面不可用（硬依赖）：${String(err instanceof Error ? err.message : err)}` }
   }
 }
 
@@ -520,10 +526,12 @@ async function contentSearch(
 async function searchStatus(srt: SearchRuntime): Promise<unknown> {
   const index = srt.index
   const sync = index.sync.snapshot()
+  // T7.3：搜索可用性由 DRS 探针裁决（硬依赖）；本地引擎仅剩会话头元数据面。
+  const drsUp = await srt.drsSource.probe()
   return {
     ok: true,
-    available: index.engine.isOpen && index.engine.countSessions() > 0,
-    reason: index.engine.isOpen ? undefined : 'not-open',
+    available: drsUp,
+    reason: drsUp ? undefined : 'drs-unavailable',
     indexing: sync.state === 'syncing',
     archivedSessions: index.engine.countArchived(),
     archive: index.archiveReader.diagnostics(),
@@ -689,6 +697,8 @@ export interface SwitchIndexServiceState {
 export interface SearchRuntime {
   sessionQuery: SwitchSessionQuery | undefined
   index: SwitchIndexServiceState
+  /** DRS 直连客户端（T7.3 硬依赖：内容分组检索臂唯一来源 + 可性探针）。 */
+  drsSource: DrsCorpusSource
   config: () => Required<StewardConfig> & SwitchSearchConfig
   /** Lazy official archive-set source (registry first, file fallback). */
   registry: () => { archivedSessionIds: readonly string[] }
@@ -1246,13 +1256,11 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
   // 重启后生效（水位语义切换本就伴随一轮全量重灌）。Host 头回显首个
   // trustedHosts 条目：DRS 信任门是精确匹配，条目省略端口时 URL 带端口会失配。
   const trustedHosts = webRuntime?.trustedHosts
-  const drsSource = initial.corpusSource === 'drs'
-    ? new DrsCorpusSource({
-        baseUrl: resolveDrsBaseUrl(initial.drsBaseUrl, trustedHosts),
-        hostHeader: trustedHosts !== undefined && trustedHosts.length > 0 ? trustedHosts[0] : undefined,
-        log,
-      })
-    : undefined
+  const drsSource = new DrsCorpusSource({
+    baseUrl: resolveDrsBaseUrl(initial.drsBaseUrl, trustedHosts),
+    hostHeader: trustedHosts !== undefined && trustedHosts.length > 0 ? trustedHosts[0] : undefined,
+    log,
+  })
 
   const indexState: SwitchIndexServiceState = {
     engine,
@@ -1266,13 +1274,14 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
       readTitleSnapshots: sessionQuery === undefined
         ? undefined
         : (ids) => sessionQuery.readTitleSnapshots(ids),
-    }, () => ({ archivedSessionIds: archiveReader.read().ids }), log, readSessionFromFile, readProjectionTitle, drsSource),
+    }, () => ({ archivedSessionIds: archiveReader.read().ids }), log, readSessionFromFile, readProjectionTitle, initial.corpusSource === 'native' ? undefined : drsSource),
     layout: indexLayout,
     rebuild: { state: 'idle', done: 0, total: 0, startedAt: 0, finishedAt: 0, failures: [] },
   }
   const srt: SearchRuntime = {
     sessionQuery,
     index: indexState,
+    drsSource,
     config: () => current(),
     registry: () => ({ archivedSessionIds: archiveReader.read().ids }),
     log,
