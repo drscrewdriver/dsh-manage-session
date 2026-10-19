@@ -1052,7 +1052,21 @@ declare class SwitchIndexEngine {
      * 全量重灌不改变归档状态）；显式传入时以传入值为准（重建/导入路径）。
      */
     archived?: boolean;
-  }): void;
+  }): number;
+  /**
+   * 该会话是否已有正文（issue #1:hollow 行判据）。
+   * LIMIT 1 探测命中 docs_session 索引,每轮 poll 对每个未变更会话的开销可忽略。
+   */
+  hasSessionDocs(sessionId: string): boolean;
+  /**
+   * 「有表头无正文」的会话 id（升序）—— hollow 体检面。补录后仍 hollow 的行
+   * 包含无可索引文本的真空会话（合法终态,见 sync 的 confirmedEmpty 缓存）。
+   */
+  listHollowSessions(): string[];
+  /**
+   * `PRAGMA integrity_check` 首行：'ok' 或损坏报告串。swap 后完整性闸门用。
+   */
+  integrityCheck(): string;
   /**
    * Write an archived session's header row without any document content.
    *
@@ -1203,6 +1217,8 @@ interface SwitchSyncState {
     sessionId: string;
     error: string;
   }[];
+  /** 补录后仍「有表头无正文」的行数（hollow 体检面,含合法真空会话）。 */
+  hollow: number;
   /** Last pass error (whole-pass abort), if any. */
   error?: string;
 }
@@ -1229,6 +1245,13 @@ declare class SwitchWatermarkSync {
    */
   private readonly readProjectionTitle?;
   private running;
+  /**
+   * 本进程已确认「重读过且产出仍为 0 docs」的会话（键 id@version）。
+   * 无可索引文本是合法终态——没有这份缓存,hollow 补录判据会把真空会话
+   * 每轮完整重读一次（热循环）。宿主重启后缓存归零,最多各重读一次。
+   */
+  private readonly confirmedEmpty;
+  private static emptyKey;
   private readonly state;
   /**
    * @param readSessionFromFile - 可选的**文件级兜底读取器**（管家 health 侧的
@@ -1402,6 +1425,18 @@ interface SwitchRebuildHooks {
     events: readonly SwitchRawEvent[];
   } | undefined>;
 }
+/**
+ * The swap window: synchronous renames only; queries fail only inside it.
+ *
+ * issue #1 评论的损坏根因：只搬主文件时,旧库残留的 -wal/-shm 会被同名顶替
+ * 的新库当自己的 WAL 重放,页号错配 → malformed。因此 sidecar 必须随主文件
+ * 一并迁 archive（干净 close 本会 checkpoint 自删,这里是异常关闭的兜底）。
+ * swap 后跑 integrity_check：非 ok 则把损坏库改名 .corrupt、从刚落的 archive
+ * 回滚重开,并抛错让调用方置 error（把「索引损坏」降级为「回到上次快照」）。
+ * 导出供测试直接驱动 swap 窗口（多连接场景在 Windows 上 rename 必 EBUSY,
+ * 无法经 rebuildIndex 全链路确定性复现）。
+ */
+declare function swapShadowIntoActive(activeEngine: SwitchIndexEngine, layout: SwitchIndexLayout, log?: (msg: string) => void): Promise<void>;
 declare function rebuildIndex(activeEngine: SwitchIndexEngine, layout: SwitchIndexLayout, sessionQuery: SwitchRebuildSessionQuery, keepArchives: number, onProgress?: (done: number, total: number) => void, archiveSource?: () => SwitchArchiveSource | undefined, hooks?: SwitchRebuildHooks): Promise<SwitchRebuildState>;
 /** One doc-level record the snapshot importer feeds in. */
 interface SwitchImportRecord {
@@ -1418,8 +1453,9 @@ interface SwitchImportRecord {
     text: string;
   }[];
 }
-/** Import doc-level records into the shadow file and swap it in (same swap path). */
-declare function importIntoIndex(activeEngine: SwitchIndexEngine, layout: SwitchIndexLayout, records: readonly SwitchImportRecord[], keepArchives: number): Promise<SwitchRebuildState>;
+/** Import doc-level records into the shadow file and swap it in (same swap path).
+ * @param log - 可选日志汇（空 docs 记录告警,issue #1 写入侧可观测）。 */
+declare function importIntoIndex(activeEngine: SwitchIndexEngine, layout: SwitchIndexLayout, records: readonly SwitchImportRecord[], keepArchives: number, log?: (msg: string) => void): Promise<SwitchRebuildState>;
 //#endregion
 //#region src/host/history/archive.d.ts
 /** 一行历史文件条目（尽力而为的元数据 + 磁盘占用）。 */
@@ -2116,4 +2152,4 @@ declare function handleMethod(method: string, payload: unknown, runtime: Steward
  */
 declare function apply(ctx: Context, config?: Partial<StewardConfig & SwitchSearchConfig>): void;
 //#endregion
-export { Config, DEFAULT_CONFIG, DEFAULT_INDEX_LAYOUT, type DiscoveredSession, type GenerationArtifact, HEALTH_METHODS, HISTORY_METHODS, HealthCache, type HealthCacheEntry, INDEX_METHODS, type LogArtifact, type LogCompression, type RepairAssessment, type RepairVerdict, SOURCE_MIGRATE_BACKUP_SUFFIX, STEWARD_API_PREFIX, STEWARD_SETTINGS_NAMESPACE, SWITCH_API_PREFIX, SWITCH_DEFAULT_CONFIG, SearchRuntime, type SessionGenerations, type SessionPriority, type StewardConfig, StewardRuntime, type SwitchArchiveDiagnostics, SwitchIndexEngine, SwitchIndexServiceState, type SwitchSearchConfig, SwitchWatermarkSync, V4_HOST_MIN, apply, archiveArchiveFile, archiveHistory, assessRepair, backupFilesIn, buildProjectionOwnerIndex, buildSessionReport, classifyGenerationFilename, countCorpus, createArchiveSource, createAttributor, decodeSessionLogBytes, decodeSessionLogFile, detectSteward, dirSize, discoverSessions, editWorkspaceDocument, exportSnapshot, extractTitleFromEvents, findSession, findSessionLog, firstLosslessViolation, gateColdRead, gateGeneration, gateLogIntegrity, gateLosslessJson, gateProjectionCache, gateSourceKind, generationLogFilename, handleIndexMethod, handleMethod, importIntoIndex, indexSessionDirs, inject, isLossless, isMigrationStagingFilename, isSafeChild, isSourceMigrateBackupName, latestArtifactMtime, listHistory, locateSessionUsage, methodEnabled, migrateLegacySource, migrateSessionSourceKind, parseGenerationLogFilename, parseSnapshot, prescribe, probePeer, projCacheRootFor, pruneArchiveFile, pruneHistory, purgeHistory, quarantineProjectionCache, readArchiveSet, readProjectionCache, readSessionGenerations, readSourceKindFacts, readTailFacts, rebuildIndex, recoverIndex, scanSessions, scanZstdFrames, sessionPriority, sessionsRootFor };
+export { Config, DEFAULT_CONFIG, DEFAULT_INDEX_LAYOUT, type DiscoveredSession, type GenerationArtifact, HEALTH_METHODS, HISTORY_METHODS, HealthCache, type HealthCacheEntry, INDEX_METHODS, type LogArtifact, type LogCompression, type RepairAssessment, type RepairVerdict, SOURCE_MIGRATE_BACKUP_SUFFIX, STEWARD_API_PREFIX, STEWARD_SETTINGS_NAMESPACE, SWITCH_API_PREFIX, SWITCH_DEFAULT_CONFIG, SearchRuntime, type SessionGenerations, type SessionPriority, type StewardConfig, StewardRuntime, type SwitchArchiveDiagnostics, SwitchIndexEngine, SwitchIndexServiceState, type SwitchSearchConfig, SwitchWatermarkSync, V4_HOST_MIN, apply, archiveArchiveFile, archiveHistory, assessRepair, backupFilesIn, buildProjectionOwnerIndex, buildSessionReport, classifyGenerationFilename, countCorpus, createArchiveSource, createAttributor, decodeSessionLogBytes, decodeSessionLogFile, detectSteward, dirSize, discoverSessions, editWorkspaceDocument, exportSnapshot, extractTitleFromEvents, findSession, findSessionLog, firstLosslessViolation, gateColdRead, gateGeneration, gateLogIntegrity, gateLosslessJson, gateProjectionCache, gateSourceKind, generationLogFilename, handleIndexMethod, handleMethod, importIntoIndex, indexSessionDirs, inject, isLossless, isMigrationStagingFilename, isSafeChild, isSourceMigrateBackupName, latestArtifactMtime, listHistory, locateSessionUsage, methodEnabled, migrateLegacySource, migrateSessionSourceKind, parseGenerationLogFilename, parseSnapshot, prescribe, probePeer, projCacheRootFor, pruneArchiveFile, pruneHistory, purgeHistory, quarantineProjectionCache, readArchiveSet, readProjectionCache, readSessionGenerations, readSourceKindFacts, readTailFacts, rebuildIndex, recoverIndex, scanSessions, scanZstdFrames, sessionPriority, sessionsRootFor, swapShadowIntoActive };

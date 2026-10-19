@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-steward",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
     "tag": "latest",

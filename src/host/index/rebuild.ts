@@ -141,6 +141,76 @@ export interface SwitchRebuildHooks {
 /** Sessions per batched transaction (one fsync checkpoint per chunk). */
 const REBUILD_CHUNK = 50
 
+/**
+ * 主文件旁的 WAL sidecar（`-wal`/`-shm`）随主文件一并迁走；无目的地时
+ * （孤儿残留）直接 force rm。rename 失败降级删除——sidecar 清理永远不能
+ * 阻断 swap 本身。
+ */
+async function moveOrDeleteSidecars(basePath: string, destBasePath: string | null): Promise<void> {
+  for (const suffix of ['-wal', '-shm']) {
+    const src = basePath + suffix
+    if (!existsSync(src)) continue
+    if (destBasePath !== null) {
+      try {
+        await rename(src, destBasePath + suffix)
+        continue
+      } catch { /* 降级删除 */ }
+    }
+    await rm(src, { force: true }).catch(() => {})
+  }
+}
+
+/**
+ * The swap window: synchronous renames only; queries fail only inside it.
+ *
+ * issue #1 评论的损坏根因：只搬主文件时,旧库残留的 -wal/-shm 会被同名顶替
+ * 的新库当自己的 WAL 重放,页号错配 → malformed。因此 sidecar 必须随主文件
+ * 一并迁 archive（干净 close 本会 checkpoint 自删,这里是异常关闭的兜底）。
+ * swap 后跑 integrity_check：非 ok 则把损坏库改名 .corrupt、从刚落的 archive
+ * 回滚重开,并抛错让调用方置 error（把「索引损坏」降级为「回到上次快照」）。
+ * 导出供测试直接驱动 swap 窗口（多连接场景在 Windows 上 rename 必 EBUSY,
+ * 无法经 rebuildIndex 全链路确定性复现）。
+ */
+export async function swapShadowIntoActive(
+  activeEngine: SwitchIndexEngine,
+  layout: SwitchIndexLayout,
+  log?: (msg: string) => void,
+): Promise<void> {
+  const activePath = join(layout.dir, layout.active)
+  const buildingPath = join(layout.dir, layout.building)
+  let archivePath: string | null = null
+  if (existsSync(activePath)) {
+    activeEngine.close()
+    archivePath = join(layout.dir, `${layout.archivePrefix}${Date.now()}.sqlite`)
+    await rename(activePath, archivePath)
+    await moveOrDeleteSidecars(activePath, archivePath)
+  } else {
+    // 主文件不在但 sidecar 残留（崩溃窗口）：新库开在孤儿 WAL 上同样错配。
+    await moveOrDeleteSidecars(activePath, null)
+  }
+  await rename(buildingPath, activePath)
+  await activeEngine.open()
+  const integrity = activeEngine.integrityCheck()
+  if (integrity === 'ok') return
+  log?.(`post-swap integrity FAILED (${integrity}); rolling back to the newest archive`)
+  activeEngine.close()
+  const corruptBase = join(layout.dir, `index.corrupt-${Date.now()}.sqlite`)
+  try {
+    await rename(activePath, corruptBase)
+    await moveOrDeleteSidecars(activePath, corruptBase)
+    if (archivePath !== null) {
+      await rename(archivePath, activePath)
+      for (const suffix of ['-wal', '-shm']) {
+        if (existsSync(archivePath + suffix)) await rename(archivePath + suffix, activePath + suffix).catch(() => {})
+      }
+      await activeEngine.open()
+    }
+  } catch (rollbackErr) {
+    log?.(`swap rollback itself failed: ${String(rollbackErr instanceof Error ? rollbackErr.message : rollbackErr)}`)
+  }
+  throw new Error(`switch-search: post-swap integrity check failed: ${integrity}`)
+}
+
 export async function rebuildIndex(
   activeEngine: SwitchIndexEngine,
   layout: SwitchIndexLayout,
@@ -253,14 +323,7 @@ export async function rebuildIndex(
     state.state = 'swapping'
     emit()
     hooks?.log?.(`rebuild shadow complete: ${state.done} sessions, ~${docsWritten} docs, ${state.failures.length} failures; swapping`)
-    // The swap window is three synchronous renames; queries fail only inside it.
-    const activePath = join(layout.dir, layout.active)
-    if (existsSync(activePath)) {
-      activeEngine.close()
-      await rename(activePath, join(layout.dir, `${layout.archivePrefix}${Date.now()}.sqlite`))
-    }
-    await rename(buildingPath, activePath)
-    await activeEngine.open()
+    await swapShadowIntoActive(activeEngine, layout, hooks?.log)
     await pruneArchives(layout, keepArchives)
     state.finishedAt = Date.now()
     state.state = 'idle'
@@ -287,12 +350,14 @@ export interface SwitchImportRecord {
   docs: readonly { seq: number; type: string; surface: string; time: number; text: string }[]
 }
 
-/** Import doc-level records into the shadow file and swap it in (same swap path). */
+/** Import doc-level records into the shadow file and swap it in (same swap path).
+ * @param log - 可选日志汇（空 docs 记录告警,issue #1 写入侧可观测）。 */
 export async function importIntoIndex(
   activeEngine: SwitchIndexEngine,
   layout: SwitchIndexLayout,
   records: readonly SwitchImportRecord[],
   keepArchives: number,
+  log?: (msg: string) => void,
 ): Promise<SwitchRebuildState> {
   const state: SwitchRebuildState = {
     state: 'building',
@@ -311,6 +376,10 @@ export async function importIntoIndex(
     try {
       for (const record of records) {
         try {
+          if (record.docs.length === 0) {
+            // 快照往返空正文是合法输入,不硬拒；修复后这样的行下一轮 poll 即补录。
+            log?.(`snapshot import: session ${record.sessionId} has zero docs (hollow header, sync will backfill)`)
+          }
           shadow.importSessionDocs({
             sessionId: record.sessionId,
             version: record.version,
@@ -330,13 +399,7 @@ export async function importIntoIndex(
       throw error
     }
     state.state = 'swapping'
-    const activePath = join(layout.dir, layout.active)
-    if (existsSync(activePath)) {
-      activeEngine.close()
-      await rename(activePath, join(layout.dir, `${layout.archivePrefix}${Date.now()}.sqlite`))
-    }
-    await rename(buildingPath, activePath)
-    await activeEngine.open()
+    await swapShadowIntoActive(activeEngine, layout, log)
     await pruneArchives(layout, keepArchives)
     state.finishedAt = Date.now()
     state.state = 'idle'
@@ -348,12 +411,13 @@ export async function importIntoIndex(
   return state
 }
 
-/** Remove the oldest archives beyond the retention bound. */
+/** Remove the oldest archives beyond the retention bound (sidecars too). */
 async function pruneArchives(layout: SwitchIndexLayout, keep: number): Promise<void> {
   const archives = await listArchives(layout)
   const excess = archives.length - Math.max(0, keep)
   for (let i = 0; i < excess; i += 1) {
     await unlink(join(layout.dir, archives[i])).catch(() => {})
+    await moveOrDeleteSidecars(join(layout.dir, archives[i]), null)
   }
 }
 

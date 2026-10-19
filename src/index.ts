@@ -105,7 +105,7 @@ export type { RepairAssessment, RepairVerdict } from './host/health/repair.ts'
 export { SwitchIndexEngine } from './host/index/engine.ts'
 export { extractTitleFromEvents } from './host/index/extract.ts'
 export { SwitchWatermarkSync } from './host/index/sync.ts'
-export { rebuildIndex, importIntoIndex, recoverIndex, DEFAULT_INDEX_LAYOUT } from './host/index/rebuild.ts'
+export { rebuildIndex, importIntoIndex, recoverIndex, swapShadowIntoActive, DEFAULT_INDEX_LAYOUT } from './host/index/rebuild.ts'
 export { exportSnapshot, parseSnapshot } from './host/index/snapshot.ts'
 export { detectSteward, probePeer } from './host/index/peers.ts'
 
@@ -648,7 +648,7 @@ async function indexImport(srt: SearchRuntime, text: string) {
   if (parsed.records.length === 0) return { ok: false, error: `快照无可导入会话（跳过 ${parsed.skipped} 行）` }
   const config = srt.config()
   const keepArchives = Math.max(0, config.archiveKeep ?? SWITCH_DEFAULT_CONFIG.archiveKeep)
-  void importIntoIndex(index.engine, index.layout, parsed.records, keepArchives)
+  void importIntoIndex(index.engine, index.layout, parsed.records, keepArchives, srt.log)
     .then((state) => { index.rebuild = state })
     .catch((err) => {
       index.rebuild = {

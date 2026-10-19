@@ -204,10 +204,10 @@ export class SwitchIndexEngine {
      * 全量重灌不改变归档状态）；显式传入时以传入值为准（重建/导入路径）。
      */
     archived?: boolean
-  }): void {
+  }): number {
     const db = this.requireDb()
     const documents = buildIndexDocuments(input.sessionId, input.events)
-    this.withWriteTx(() => {
+    return this.withWriteTx(() => {
       this.deleteSessionFts(db, input.sessionId)
       db.prepare('DELETE FROM docs WHERE session_id = ?').run(input.sessionId)
       const insertDoc = db.prepare(`
@@ -240,7 +240,41 @@ export class SwitchIndexEngine {
         Date.now(),
         input.archived === true ? 1 : 0,
       )
+      return documents.length
     })
+  }
+
+  /**
+   * 该会话是否已有正文（issue #1:hollow 行判据）。
+   * LIMIT 1 探测命中 docs_session 索引,每轮 poll 对每个未变更会话的开销可忽略。
+   */
+  hasSessionDocs(sessionId: string): boolean {
+    const db = this.requireDb()
+    return db.prepare('SELECT 1 FROM docs WHERE session_id = ? LIMIT 1').get(sessionId) !== undefined
+  }
+
+  /**
+   * 「有表头无正文」的会话 id（升序）—— hollow 体检面。补录后仍 hollow 的行
+   * 包含无可索引文本的真空会话（合法终态,见 sync 的 confirmedEmpty 缓存）。
+   */
+  listHollowSessions(): string[] {
+    const db = this.requireDb()
+    return (db.prepare(`
+      SELECT s.session_id FROM sessions s
+      WHERE NOT EXISTS (SELECT 1 FROM docs d WHERE d.session_id = s.session_id)
+      ORDER BY s.session_id
+    `).all() as { session_id: string }[]).map(row => row.session_id)
+  }
+
+  /**
+   * `PRAGMA integrity_check` 首行：'ok' 或损坏报告串。swap 后完整性闸门用。
+   */
+  integrityCheck(): string {
+    const db = this.requireDb()
+    const row = db.prepare('PRAGMA integrity_check').get() as Record<string, unknown> | undefined
+    if (row === undefined) return 'no result'
+    const first = Object.values(row)[0]
+    return String(first ?? 'no result')
   }
 
   /**

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.5 (2026-10-19)
+
+### 修复 —— issue #1：hollow 会话增量同步永不补录
+- 同步跳过判据从「version 相等即跳」收紧为「version 相等且有正文（或已确认重读产出为空）」：
+  `sessions` 行存在而 `docs` 为 0 的 hollow 会话下一轮 poll 即补录，不再永久对齐全文检索隐身。
+  归档覆盖循环同语义收紧（legacy header-only 归档行按 R1 补正文）。
+- 无可索引文本的真空会话重读一次后落进程内 confirmedEmpty 缓存，不热循环（宿主重启后最多各重读一次）。
+
+### 修复 —— issue #1 评论：重建/导入 swap 后索引损坏
+- swap 窗口把主文件旁的 `-wal`/`-shm` 一并迁 archive（无主文件的孤儿残留直接清理），
+  同名顶替的新库不再继承旧库 WAL 重放 → `database disk image is malformed`。
+- swap 后新增 `PRAGMA integrity_check` 闸门：非 ok 则损坏库改名 `.corrupt` 并从最新 archive 自动回滚重开，
+  rebuild state 置 error（「索引损坏」降级为「回到上次快照」）。
+- `pruneArchives` 清理归档时同步删除其 sidecar 文件。
+
+### 新增 —— 可观测面
+- `importIntoIndex` 对空 docs 快照记录告警（不硬拒，修复后此类行下一轮同步即补录）。
+- 同步状态新增 `hollow` 计数（补录后仍「有表头无正文」的行数），随 sync pass 日志与 index-status 面透出；
+  引擎新增 `hasSessionDocs` / `listHollowSessions` / `integrityCheck` 能力面。
+
 ## 0.5.4 (2026-10-18)
 
 - hosts: 追加 0.2.1-rc.2 声明面枚举（34/34 @deepseek-ai/* 宿主 peer 逐包 npm 实测 rc.2 在版；本插件不触 ctx.web provider 与 conversation.input.model.label 槽，代码零改动，纯元数据发版；农场 rc.2 格挂账待命）

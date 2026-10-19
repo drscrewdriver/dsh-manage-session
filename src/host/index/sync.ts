@@ -39,6 +39,8 @@ export interface SwitchSyncState {
   updated: number
   /** Per-session failures from the last pass. */
   failures: { sessionId: string; error: string }[]
+  /** 补录后仍「有表头无正文」的行数（hollow 体检面,含合法真空会话）。 */
+  hollow: number
   /** Last pass error (whole-pass abort), if any. */
   error?: string
 }
@@ -57,6 +59,15 @@ export interface SwitchArchiveSource {
  */
 export class SwitchWatermarkSync {
   private running: Promise<SwitchSyncState> | undefined
+  /**
+   * 本进程已确认「重读过且产出仍为 0 docs」的会话（键 id@version）。
+   * 无可索引文本是合法终态——没有这份缓存,hollow 补录判据会把真空会话
+   * 每轮完整重读一次（热循环）。宿主重启后缓存归零,最多各重读一次。
+   */
+  private readonly confirmedEmpty = new Set<string>()
+  private static emptyKey(sessionId: string, version: number): string {
+    return `${sessionId}@${String(version)}`
+  }
   private readonly state: SwitchSyncState = {
     state: 'idle',
     lastSyncAt: 0,
@@ -64,6 +75,7 @@ export class SwitchWatermarkSync {
     total: 0,
     updated: 0,
     failures: [],
+    hollow: 0,
   }
 
   /**
@@ -160,11 +172,15 @@ export class SwitchWatermarkSync {
         const existing = this.engine.getSession(header.id)
         // 归档与活跃同一读取通路：readSession 对归档会话是 replay-validate 不激活
         // （宿主 session-query 保证）。归档正文因此入索引（可被 archived 域检索）。
-        if (existing !== undefined && existing.version === header.version) continue
+        // issue #1:hollow 行（有表头无正文）不被 version 对齐豁免——除非已确认
+        // 重读过且产出就是空（confirmedEmpty）。
+        const emptyKey = SwitchWatermarkSync.emptyKey(header.id, header.version)
+        if (existing !== undefined && existing.version === header.version
+          && (this.confirmedEmpty.has(emptyKey) || this.engine.hasSessionDocs(header.id))) continue
         changedIds.push(header.id)
         try {
           const log = await this.readSessionLog(header)
-          this.engine.upsertSession({
+          const produced = this.engine.upsertSession({
             sessionId: header.id,
             version: header.version,
             cwd: log.session.cwd ?? header.cwd ?? '',
@@ -176,6 +192,8 @@ export class SwitchWatermarkSync {
             // setArchived）—— 免掉"插行要等下一轮 setArchived 才翻 flag"的单轮滞后。
             archived: archivedSet.has(header.id),
           })
+          if (produced === 0) this.confirmedEmpty.add(emptyKey)
+          else this.confirmedEmpty.delete(emptyKey)
           updated += 1
         } catch (err) {
           failures.push({ sessionId: header.id, error: String(err instanceof Error ? err.message : err) })
@@ -185,10 +203,15 @@ export class SwitchWatermarkSync {
       // id 若还没有索引行,这里显式补齐（readSession 对归档是 replay-validate,
       // 失败时走文件兜底）。
       for (const archivedId of archivedSet) {
-        if (this.engine.getSession(archivedId) !== undefined) continue
+        const existingArchived = this.engine.getSession(archivedId)
+        // 同主循环判据：header-only 的 legacy 归档行（upsertArchivedHeader/旧快照
+        // 产物）不在 confirmedEmpty 里就要重读补正文（R1:归档正文入索引）。
+        if (existingArchived !== undefined
+          && (this.confirmedEmpty.has(SwitchWatermarkSync.emptyKey(archivedId, existingArchived.version))
+            || this.engine.hasSessionDocs(archivedId))) continue
         try {
           const log = await this.readSessionLog({ id: archivedId, version: -1 })
-          this.engine.upsertSession({
+          const produced = this.engine.upsertSession({
             sessionId: archivedId,
             version: log.session.version,
             cwd: log.session.cwd ?? '',
@@ -197,6 +220,9 @@ export class SwitchWatermarkSync {
             events: log.events,
             archived: true,
           })
+          const archivedKey = SwitchWatermarkSync.emptyKey(archivedId, log.session.version)
+          if (produced === 0) this.confirmedEmpty.add(archivedKey)
+          else this.confirmedEmpty.delete(archivedKey)
           updated += 1
         } catch (err) {
           failures.push({ sessionId: archivedId, error: `archived: ${String(err instanceof Error ? err.message : err)}` })
@@ -235,10 +261,11 @@ export class SwitchWatermarkSync {
       this.state.updated = updated
       this.state.failures = failures
       this.state.indexed = this.engine.countSessions()
+      this.state.hollow = this.engine.listHollowSessions().length
       this.state.lastSyncAt = Date.now()
       this.state.state = 'idle'
       this.state.error = undefined
-      this.log?.(`sync pass: scanned=${this.state.total} updated=${updated} archived=${archivedSet.size} failures=${failures.length} indexed=${this.state.indexed} duration=${Date.now() - passStart}ms driver=${this.engine.driverLabel}`)
+      this.log?.(`sync pass: scanned=${this.state.total} updated=${updated} archived=${archivedSet.size} failures=${failures.length} indexed=${this.state.indexed} hollow=${this.state.hollow} duration=${Date.now() - passStart}ms driver=${this.engine.driverLabel}`)
     } catch (err) {
       this.state.state = 'error'
       this.state.error = String(err instanceof Error ? err.message : err)
