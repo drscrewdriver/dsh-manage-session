@@ -24,6 +24,7 @@ import { StewardFooter, StewardPanel, TAB_HEALTH, TAB_HISTORY } from './panel.ts
 import { injectStyles as injectSearchStyles, SwitchFooter } from './search/panel.tsx'
 import { SearchSettingsCard, type SwitchCardScope } from './search/card.tsx'
 import { openSessionThrough } from './search/host-api.ts'
+import { configureLocator } from './search/locate.ts'
 import { dictionaries as searchDictionaries, NS as SEARCH_NS, translate as translateSearch, type LocaleKey as SearchLocaleKey } from './search/locales.ts'
 
 export { STEWARD_ENTRY_ID, STEWARD_SETTINGS_NAMESPACE, TAB_HEALTH, TAB_HISTORY }
@@ -222,6 +223,22 @@ export function apply(ctx: Context): void {
   const openSearchHit = (sessionId: string): void => {
     openSessionThrough((name) => ctx.get(name), sessionId)
   }
+
+  // 命中定位翻页供给（T7.4 v4）：宿主历史分页（IConversation.loadOlder），
+  // 巡逻循环靠它往回拉页直到目标行挂载。conversation 惰性按名取（装载序不
+  // 保证）；老线无此服务/取用抛错 → false，定位自动退化为纯 DOM 巡逻。
+  configureLocator({
+    loadOlder: async (): Promise<boolean> => {
+      try {
+        const conv = ctx.get('conversation') as { loadOlder?: () => Promise<void> } | undefined
+        if (conv === undefined || typeof conv.loadOlder !== 'function') return false
+        await conv.loadOlder()
+        return true
+      } catch {
+        return false
+      }
+    },
+  })
 
   // 侧边栏入口（两枚，同一 bundle 注册）：搜索（order 5，受 enabled+search 双门）与
   // 管家（order 6，受 enabled+historyFiles/healthCheck 门）。UI 收敛为单一操作台

@@ -12,6 +12,12 @@
  * 的贴底/滚动恢复覆盖——v3 改「巡逻-驻留」模型：每 TICK 重定位+补滚，
  * 目标行稳定驻留视口 STICK_MS 后才打高亮；用户手动滚动立即让位。
  *
+ * v4 根因修正（宿主接口面实锤）：dsh-client-ui-conversation 的 IConversation
+ * 暴露 loadOlder()（"Pull one older history page"）——历史是**分页**的，
+ * 首轮视口外找不到的真实原因是目标行根本没挂载。巡逻循环每 N tick 调
+ * 一次 loadOlder 往回翻页，直到目标 turn 的行进入 DOM 再驻留跳转；
+ * 翻页能力经 configureLocator 由 client apply 注入（本模块不持 ctx）。
+ *
  * 数据面：同源 GET /api/dsh-reference-session?op=session&session=<id>
  * ——行含 seq/text/search_text/surface_text/on_surface/compressed：
  * - on_surface=0（被替换原文行）：GUI 不渲染该文本 → 放弃定位（不是失败）；
@@ -37,6 +43,12 @@ const MAX_NEEDLE_CHARS = 80
 
 /** 驻留确认窗口：目标行在视口内稳定停留这么久才算跳转成功。 */
 const STICK_MS = 900
+
+/** 翻页上限：24 页 × 宿主页宽足够任何真机会话；防无限拉页。 */
+const MAX_OLDER_PAGES = 24
+
+/** 硬封顶：带翻页的定位窗口上限。 */
+const HARD_DEADLINE_MS = 30_000
 
 /** 巡逻间隔：会话重渲染会换 DOM 节点，每轮重新定位。 */
 const TICK_MS = 350
@@ -112,19 +124,26 @@ function findMessageElement(root: ParentNode, needle: string): Element | null {
   return best
 }
 
-/** 瞬时高亮：outline 描边，FLASH_MS 后恢复原 inline 样式。 */
+/** 瞬时高亮：类切换（不写 inline 样式——真机教训：prepend 历史后 React 复用
+ * 节点，定时器迟到把旧样式写在不相干元素上）。首次使用时惰性注入样式表。 */
+const FLASH_CLASS = 'dss-located-flash'
+let flashCssReady = false
+
+function ensureFlashCss(doc: Document): void {
+  if (flashCssReady) return
+  flashCssReady = true
+  const style = doc.createElement('style')
+  style.textContent = `.${FLASH_CLASS}{outline:2px solid var(--dsw-alias-accent,#4a9eff);outline-offset:2px;transition:outline 120ms ease}`
+  doc.head.appendChild(style)
+}
+
 function flashElement(el: Element): void {
-  const html = el as HTMLElement
-  const before = { outline: html.style.outline, outlineOffset: html.style.outlineOffset, transition: html.style.transition }
-  html.setAttribute('data-dss-located', '1')
-  html.style.transition = 'outline 120ms ease'
-  html.style.outline = '2px solid var(--dsw-alias-accent, #4a9eff)'
-  html.style.outlineOffset = '2px'
+  if (el.ownerDocument !== null) ensureFlashCss(el.ownerDocument)
+  el.setAttribute('data-dss-located', '1')
+  el.classList.add(FLASH_CLASS)
   setTimeout(() => {
-    html.style.outline = before.outline
-    html.style.outlineOffset = before.outlineOffset
-    html.style.transition = before.transition
-    html.removeAttribute('data-dss-located')
+    el.classList.remove(FLASH_CLASS)
+    el.removeAttribute('data-dss-located')
   }, FLASH_MS)
 }
 
@@ -135,6 +154,21 @@ export interface LocateEnv {
   win?: Window
   timeoutMs?: number
   log?: (message: string) => void
+  /** 覆盖注入的翻页供给（测试用）；缺省走 configureLocator 的全局注入。 */
+  loadOlder?: () => Promise<boolean>
+}
+
+/** 外部能力注入面：client apply 期接线宿主会话服务，模块自身零 ctx 依赖。 */
+export interface LocatorDeps {
+  /** 拉一页更早历史；true=已发起（行数可能增），false=服务缺席/报错。 */
+  loadOlder?: () => Promise<boolean>
+}
+
+let injectedDeps: LocatorDeps = {}
+
+/** 接线点：client apply 调一次；未接线时定位退化为 v3 纯 DOM 巡逻。 */
+export function configureLocator(deps: LocatorDeps): void {
+  injectedDeps = deps
 }
 
 /** 目标行是否基本完整落在视口内（巡逻驻留判定）。 */
@@ -165,10 +199,18 @@ export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}):
     if (needle === null) { log(`locate: skip row seq=${String(hit.seq)} (shadowed/短文本/无行)`); return false }
 
     const startedAt = Date.now()
-    const deadline = startedAt + (env.timeoutMs ?? LOCATE_TIMEOUT_MS)
+    let deadline = startedAt + (env.timeoutMs ?? LOCATE_TIMEOUT_MS)
+    const hardDeadline = startedAt + HARD_DEADLINE_MS
     let lastScrollAt = 0
     let userTookOver = false
-    const USER_EVENTS = ['wheel', 'touchstart', 'keydown'] as const
+    // 翻页供给：client apply 注入（IConversation.loadOlder 包装），env 可覆盖供测试。
+    const pullOlder = env.loadOlder ?? injectedDeps.loadOlder
+    let pagesPulled = 0
+    let pullInFlight = false
+    let lastPullAt = 0
+    // pointerdown 必收：真机教训——巡逻窗口内用户点「加载更早记录」等页内按钮，
+    // 不收手则我们的补滚与宿主 prepend 后的滚动锚定对打，画面错乱。
+    const USER_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
     const onUser = (): void => { userTookOver = true }
 
     return await new Promise<boolean>((resolve) => {
@@ -181,9 +223,26 @@ export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}):
       for (const ev of USER_EVENTS) win.addEventListener(ev, onUser, { passive: true, once: true })
       const ticker = setInterval(() => {
         if (userTookOver) { finish(false, 'yield user'); return }
-        if (Date.now() >= deadline) { finish(false, 'locate timeout'); return }
+        if (Date.now() >= deadline) { finish(false, `locate timeout (pages=${String(pagesPulled)})`); return }
         const el = findMessageElement(doc.body ?? doc, needle)
-        if (el === null) return // DOM 未就绪/会话还在切换：下一轮再找
+        if (el === null) {
+          // 目标行不在 DOM：历史分页面（IConversation.loadOlder）——没找到就
+          // 往回拉页，每拉一页给 2s 渲染窗口；拉满/拉尽则维持原超时。
+          if (pullOlder !== undefined && !pullInFlight && pagesPulled < MAX_OLDER_PAGES
+            && deadline < hardDeadline && Date.now() - lastPullAt >= TICK_MS * 2) {
+            pullInFlight = true
+            lastPullAt = Date.now()
+            void Promise.resolve().then(() => pullOlder()).then((pulled) => {
+              if (pulled) {
+                pagesPulled += 1
+                deadline = Math.min(hardDeadline, Date.now() + 2_000 + (env.timeoutMs ?? LOCATE_TIMEOUT_MS) / 2)
+              } else {
+                deadline = Math.min(deadline, Date.now()) // 服务缺席：不再等待
+              }
+            }).catch(() => {}).finally(() => { pullInFlight = false })
+          }
+          return // DOM 未就绪/会话还在切换：下一轮再找
+        }
         if (inViewport(el, win)) {
           // 从未滚过且本来就可见（同会话当前视口）=直达；否则须驻留过 STICK 窗。
           if (lastScrollAt === 0 || Date.now() - lastScrollAt >= STICK_MS) {
