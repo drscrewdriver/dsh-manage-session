@@ -25,6 +25,9 @@ import { injectStyles as injectSearchStyles, SwitchFooter } from './search/panel
 import { SearchSettingsCard, type SwitchCardScope } from './search/card.tsx'
 import { openSessionThrough } from './search/host-api.ts'
 import { configureLocator } from './search/locate.ts'
+import {
+  SESSION_MENU_DELETE_ID, SESSION_MENU_DELETE_ORDER, SESSION_MENU_SEAT, StewardDeleteMenuItem,
+} from './session-menu.tsx'
 import { dictionaries as searchDictionaries, NS as SEARCH_NS, translate as translateSearch, type LocaleKey as SearchLocaleKey } from './search/locales.ts'
 
 export { STEWARD_ENTRY_ID, STEWARD_SETTINGS_NAMESPACE, TAB_HEALTH }
@@ -300,6 +303,16 @@ export function apply(ctx: Context): void {
       }),
     ]),
   ), 'dsh-session-steward: plugins page config card')
+
+  // 侧栏会话菜单删除臂（2026-10-20 用户定标，按左侧边栏换代识别）：
+  // 席位 `sidebar.workspaces.session.menu.item` 自 0.1.7 存在（宿主自带
+  // pin/rename/fork/archive/session-id 行），本行 order=500 落末位；
+  // ≤0.1.5 菜单写死无席位 → inject 静默等待，删除入口由搜索面板行内按钮承担。
+  // 行可见性由组件自探针 directDelete（缺省关），非 true 不渲染。
+  slots.inject(SESSION_MENU_SEAT, () => slots.register(
+    { name: SESSION_MENU_SEAT, id: SESSION_MENU_DELETE_ID, order: SESSION_MENU_DELETE_ORDER, locale: NS },
+    StewardDeleteMenuItem,
+  ), 'dsh-session-steward: session menu delete row')
 
   // 家族节宿主选举（次优先级）：宿主 dsh-thinking-levels 缺席时顶上「起子插件
   // 设置」节。下载量排名 session-steward(1090) 低于 session-guard(1522) → 宽限期
