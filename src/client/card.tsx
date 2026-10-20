@@ -117,16 +117,8 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
           onChange: (checked) => { void scope.set('enabled', checked) },
         }),
       }),
-      createElement(Row, {
-        key: 'history',
-        title: translate(t, 'card.history'),
-        desc: translate(t, 'card.history.desc'),
-        control: createElement(Toggle, {
-          checked: value.historyFiles ?? DEFAULT_CONFIG.historyFiles,
-          disabled: !writable,
-          onChange: (checked) => { void scope.set('historyFiles', checked) },
-        }),
-      }),
+      // 2026-10-20 养老院页签退场：historyFiles 开关不再暴露（配置字段保留，
+      // 宿主侧历史文件能力/路由不动）。
       createElement(Row, {
         key: 'health',
         title: translate(t, 'card.health'),

@@ -18,7 +18,7 @@ import {
 import { StewardCardScope, StewardSettingsCard, type CardTranslate } from './card.tsx'
 import { searchBridgeScope, stewardBridgeScope, withBridgeFallback, type BridgeScope } from './bridge-scope.ts'
 import { dictionaries, translate, type LocaleKey } from './locales.ts'
-import { StewardFooter, StewardPanel, TAB_HEALTH, TAB_HISTORY } from './panel.tsx'
+import { StewardFooter, StewardPanel, TAB_HEALTH } from './panel.tsx'
 // 搜索子域（原 dsh-search-index client 半身）：面板/入口组件、设置卡、
 // 打开会话的宿主服务面解析、独立字典命名空间（switch-search，键集不变）。
 import { injectStyles as injectSearchStyles, SwitchFooter } from './search/panel.tsx'
@@ -27,7 +27,7 @@ import { openSessionThrough } from './search/host-api.ts'
 import { configureLocator } from './search/locate.ts'
 import { dictionaries as searchDictionaries, NS as SEARCH_NS, translate as translateSearch, type LocaleKey as SearchLocaleKey } from './search/locales.ts'
 
-export { STEWARD_ENTRY_ID, STEWARD_SETTINGS_NAMESPACE, TAB_HEALTH, TAB_HISTORY }
+export { STEWARD_ENTRY_ID, STEWARD_SETTINGS_NAMESPACE, TAB_HEALTH }
 export { translate } from './locales.ts'
 
 /** 字典命名空间（locale.register 用）。 */
@@ -112,23 +112,14 @@ function injectStyles(): () => void {
 .dss_tabBody{display:flex;flex-direction:column;gap:8px;padding-top:8px}
 .dss_actBtn{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:transparent;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;color:var(--dsw-alias-label-primary,#111827)}
 .dss_actBtn:disabled{opacity:.5;cursor:default}
-.dss_dangerBtn{border-color:var(--dsw-alias-state-error-primary,#dc2626);color:var(--dsw-alias-state-error-primary,#dc2626)}
-.dss_editActive{background:var(--dsw-alias-interactive-bg-active,rgba(63,99,216,.12))}
 .dss_btnRow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .dss_list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 .dss_row{display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:8px;border:1px solid transparent}
 .dss_row:hover{border-color:var(--dsw-alias-border-l2,#e5e7eb)}
-.dss_rowTitle{display:flex;gap:6px;align-items:center;flex:1 1 auto;min-width:0}
-.dss_titleText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dss_tag{font-size:11px;color:var(--dsw-alias-label-tertiary,#9ca3af)}
 .dss_meta{font-size:11px;color:var(--dsw-alias-label-tertiary,#9ca3af)}
-.dss_metaLine{font-size:11px;color:var(--dsw-alias-label-tertiary,#9ca3af)}
 .dss_uuid{font-family:var(--ds-font-family-code,monospace)}
 /* 按行的磁盘占用：右对齐、不参与标题压缩，方便纵向比对「哪条最占地方」。 */
-.dss_size{flex:none;font-variant-numeric:tabular-nums;white-space:nowrap}
-.dss_check{display:inline-flex;align-items:center}
 .dss_status{font-size:12px;color:var(--dsw-alias-label-secondary,#6b7280)}
-.dss_warnText{color:var(--dsw-alias-state-warning-primary,#d97706)}
 .dss_error{font-size:12px;color:var(--dsw-alias-state-error-primary,#dc2626)}
 .dss_empty{font-size:12px;color:var(--dsw-alias-label-tertiary,#9ca3af);padding:10px 2px}
 .dss_gateList{display:flex;flex-direction:column;gap:6px}
@@ -241,7 +232,8 @@ export function apply(ctx: Context): void {
   })
 
   // 侧边栏入口（两枚，同一 bundle 注册）：搜索（order 5，受 enabled+search 双门）与
-  // 管家（order 6，受 enabled+historyFiles/healthCheck 门）。UI 收敛为单一操作台
+  // 管家（order 6，受 enabled+search/healthCheck 门；2026-10-20 养老院页签退场，
+  // historyFiles 配置字段保留但不再控制 UI）。UI 收敛为单一操作台
   // 属 P2 批量台任务（.agents/plans/steward-merge-search-index T9）。
   slots.inject('sidebar.footer.action', () => slots.register(
     { name: 'sidebar.footer.action', id: 'dsh-search-index', order: 5 },
@@ -415,10 +407,10 @@ export function StewardEntry(
     () => (props.scope !== undefined ? props.scope.getSnapshot() : { value: DEFAULT_CONFIG }),
   )
   const config: StewardConfig = { ...DEFAULT_CONFIG, ...(snapshot.value ?? {}) }
-  const historyFiles = config.historyFiles !== false
   const healthCheck = config.healthCheck !== false
   const searchEnabled = config.search !== false
-  const visible = config.enabled !== false && (historyFiles || healthCheck || searchEnabled)
+  // 养老院页签已退场：historyFiles 不再参与可见性（宿主侧能力保留）。
+  const visible = config.enabled !== false && (healthCheck || searchEnabled)
   const wide = props.wide === true
   // 入口文案与面板标题同源：字典是唯一出处，组件不再持有兜底中文。
   const label = translate(undefined, 'panel.title')
@@ -435,7 +427,6 @@ export function StewardEntry(
     open
       ? createElement(StewardPanel, {
         key: 'panel',
-        historyFiles,
         healthCheck,
         searchEnabled,
         openSession: props.openSession,

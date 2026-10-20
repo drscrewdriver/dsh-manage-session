@@ -512,7 +512,7 @@ interface SwitchSearchConfig {
   indexDir?: string;
   /**
    * 语料源(T7.1):`'native'`=sessionQuery 服务 + 转录文件兜底(缺省);
-   * `'drs'`=dsh-reference-session 投影库(docs 直插;DRS 不可达时整轮
+   * `'drs'`=dsh-reference-session-collector 投影库(docs 直插;DRS 不可达时整轮
    * 回退 native 链路,水位语义切换的首轮会全量重灌一次)。
    */
   corpusSource?: 'native' | 'drs';
@@ -1155,7 +1155,7 @@ declare class SwitchIndexEngine {
   /**
    * 会话头直写（DRS 直连时代的同步轮专用，T7.3）：只维护 sessions 元数据
    * （水位/标题/目录/末时间/归档），**不碰 docs/docs_fts**——内容检索
-   * 已直连 dsh-reference-session（op=search&group=session），本地正文索引
+   * 已直连 dsh-reference-session-collector（op=search&group=session），本地正文索引
    * 退役，存量 docs 行自然老化不再新增。空标题保留旧行（同 upsertSessionDocs）。
    */
   upsertSessionHead(input: {
@@ -1295,7 +1295,7 @@ interface SwitchDrsCorpusDoc {
 }
 /**
  * DRS 语料源端口(T7.1):corpusSource='drs' 时语料改从
- * dsh-reference-session 投影库取,docs 直插引擎;不可达时整轮回退原生
+ * dsh-reference-session-collector 投影库取,docs 直插引擎;不可达时整轮回退原生
  * sessionQuery + 文件兜底链路。单测注入普通对象。
  */
 interface SwitchDrsCorpusSource {

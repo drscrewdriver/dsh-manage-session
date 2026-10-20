@@ -1,10 +1,13 @@
 # dsh-session-steward (Session Steward)
 
-A DSH web plugin for **session history files** and **session health checks**. It never touches session data itself.
+A DSH web plugin for the **session management console** and **session health checks**. It never touches session data itself.
 
-- **Retirement Home (history files)** — browse the official archive set and prune ids in bulk
-  (backup + atomic replace; a DSH restart is required for the host to reload it).
-- **Checkup (health)** — four gates → prescription (command list) → discharge (reversible repair with a
+- **Manage (session console, main tab)** — all sessions grouped by workspace with an
+  archived-domain filter; select rows to batch archive, un-archive (array-only, reversible)
+  or purge (deletes on-disk entities, irreversible; backup + atomic replace, a DSH restart
+  is required for the host to reload the store file).
+  (2026-10-20 UI change: the former standalone "Retirement Home" tab was merged into this page.)
+- **Checkup (health, secondary tab)** — four gates → prescription (command list) → discharge (reversible repair with a
   before/after comparison).
 
 > Naming boundary: **this package ships no search or index features**. Search/indexing belongs to
@@ -20,11 +23,10 @@ A **Session Steward** entry sits next to Search and Settings at the bottom of th
 
 ![Sidebar entry](assets/left-sidebar.png)
 
-**Retirement Home (history files)** — the official archive set, each row carrying its size and whether the on-disk entity still exists; select rows to un-archive or purge:
+**Manage (main tab)** — sessions grouped by workspace with active/archived/favorite filters, each row
+carrying its size and whether the on-disk entity still exists; select rows to batch archive, un-archive or purge:
 
-![Retirement Home](assets/archive.png)
-
-**Checkup** — the entry point of the four-gate checkup, which ends in a reversible prescription:
+**Checkup (secondary tab)** — the entry point of the four-gate checkup, which ends in a reversible prescription:
 
 ![Checkup](assets/doctor.png)
 
@@ -56,7 +58,7 @@ Settings namespace `session-steward`; sidebar entry id `dsh-session-steward`.
 
 | Switch | Field | When off |
 |---|---|---|
-| Session history files | `historyFiles` (default true) | `session-history-*` is not registered and the Retirement Home tab is not rendered |
+| Session history files | `historyFiles` (default true) | `session-history-*` is not registered (the UI tab was merged into Manage on 2026-10-20 and no longer gates a tab) |
 | Health check | `healthCheck` (default true) | `session-health-*` is not registered and the Checkup tab is not rendered |
 
 Closed domains return `{ ok: false, error: '子域已关闭（…=false）：<method> 未注册' }` — no empty shells.

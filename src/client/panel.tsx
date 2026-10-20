@@ -1,12 +1,17 @@
 /**
- * 会话管家面板壳：一个侧边栏入口，两个页签（养老院 / 体检）。
+ * 会话管家面板壳：一个侧边栏入口，两个页签（管理=主页面 / 体检=备用）。
  *
- * 页签可见性由开关决定：`historyFiles=false` 时「养老院」消失，`healthCheck=false`
- * 时「体检」消失；两者都关时进入面板直接显示空壳提示（客户端也会隐藏入口）。
+ * 2026-10-20 页面调整（用户定标）：「养老院」页签取消——管理台已覆盖其全部
+ * 动作面（archive/unarchive/purge + 归档域筛选），独立页签属重复入口；
+ * 历史文件组件（history-panel.tsx）随摘除，宿主侧 history 路由与配置字段
+ * （historyFiles）保留不动，字典键留用以备回迁。
+ *
+ * 页签可见性由开关决定：`search=false` 时「管理」消失（退到体检），
+ * `healthCheck=false` 时「体检」消失；两者都关时进入面板直接显示空壳提示
+ * （客户端也会隐藏入口）。
  */
 import { createElement, useEffect, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
-import { HistoryPanel } from './history-panel.tsx'
 import { HealthPanel } from './health-panel.tsx'
 import { ManageConsole } from './search/manage.tsx'
 import { translate, type LocaleKey } from './locales.ts'
@@ -15,15 +20,12 @@ import { translate, type LocaleKey } from './locales.ts'
 export type PanelTranslate = (key: LocaleKey, params?: Record<string, unknown>) => string
 
 /** 页签 id（导出供测试断言）。 */
-export const TAB_HISTORY = 'dss-tab-history'
 export const TAB_HEALTH = 'dss-tab-health'
 export const TAB_MANAGE = 'dss-tab-manage'
 
 /** 面板入参。 */
 export interface StewardPanelProps {
   t?: PanelTranslate
-  /** 历史文件子域是否可见。 */
-  historyFiles: boolean
   /** 健康检查子域是否可见。 */
   healthCheck: boolean
   /** 搜索子域是否启用（启用才有「管理」页签——它读统一索引语料）。 */
@@ -34,15 +36,15 @@ export interface StewardPanelProps {
 }
 
 /** 会话管家对话框。 */
-export function StewardPanel({ t, historyFiles, healthCheck, searchEnabled = false, openSession, onClose }: StewardPanelProps): ReactElement {
-  const [tab, setTab] = useState<'history' | 'health' | 'manage'>(historyFiles ? 'history' : healthCheck ? 'health' : 'manage')
+export function StewardPanel({ t, healthCheck, searchEnabled = false, openSession, onClose }: StewardPanelProps): ReactElement {
+  // 主页面=管理；管理关闭时退到体检兜底。
+  const [tab, setTab] = useState<'health' | 'manage'>(searchEnabled ? 'manage' : 'health')
 
   // 开关变化后收敛到仍然可见的页签。
   useEffect(() => {
-    if (tab === 'history' && !historyFiles && (healthCheck || searchEnabled)) setTab(healthCheck ? 'health' : 'manage')
-    if (tab === 'health' && !healthCheck && (historyFiles || searchEnabled)) setTab(historyFiles ? 'history' : 'manage')
-    if (tab === 'manage' && !searchEnabled && historyFiles) setTab('history')
-  }, [tab, historyFiles, healthCheck, searchEnabled])
+    if (tab === 'manage' && !searchEnabled && healthCheck) setTab('health')
+    if (tab === 'health' && !healthCheck && searchEnabled) setTab('manage')
+  }, [tab, healthCheck, searchEnabled])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') onClose() }
@@ -51,15 +53,15 @@ export function StewardPanel({ t, historyFiles, healthCheck, searchEnabled = fal
   }, [onClose])
 
   const tabs: ReactElement[] = []
-  if (historyFiles) {
+  if (searchEnabled) {
     tabs.push(createElement('button', {
-      key: TAB_HISTORY,
-      id: TAB_HISTORY,
+      key: TAB_MANAGE,
+      id: TAB_MANAGE,
       type: 'button',
-      className: `dss_tab${tab === 'history' ? ' dss_tabActive' : ''}`,
-      'aria-selected': tab === 'history',
-      onClick: () => { setTab('history') },
-    }, translate(t, 'panel.tab.history')))
+      className: `dss_tab${tab === 'manage' ? ' dss_tabActive' : ''}`,
+      'aria-selected': tab === 'manage',
+      onClick: () => { setTab('manage') },
+    }, translate(t, 'panel.tab.manage')))
   }
   if (healthCheck) {
     tabs.push(createElement('button', {
@@ -71,25 +73,13 @@ export function StewardPanel({ t, historyFiles, healthCheck, searchEnabled = fal
       onClick: () => { setTab('health') },
     }, translate(t, 'panel.tab.health')))
   }
-  if (searchEnabled) {
-    tabs.push(createElement('button', {
-      key: TAB_MANAGE,
-      id: TAB_MANAGE,
-      type: 'button',
-      className: `dss_tab${tab === 'manage' ? ' dss_tabActive' : ''}`,
-      'aria-selected': tab === 'manage',
-      onClick: () => { setTab('manage') },
-    }, translate(t, 'panel.tab.manage')))
-  }
 
-  const body: ReactElement = tab === 'history' && historyFiles
-    ? createElement(HistoryPanel, { t, onClose })
+  const body: ReactElement = tab === 'manage' && searchEnabled
+    ? createElement('div', { style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } },
+        createElement(ManageConsole, { open: openSession ?? (() => {}) }))
     : tab === 'health' && healthCheck
       ? createElement(HealthPanel, { t, onClose })
-      : tab === 'manage' && searchEnabled
-        ? createElement('div', { style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } },
-            createElement(ManageConsole, { open: openSession ?? (() => {}) }))
-        : createElement('div', { className: 'dss_empty' }, translate(t, 'card.enabled.desc'))
+      : createElement('div', { className: 'dss_empty' }, translate(t, 'card.enabled.desc'))
 
   return createPortal(createElement('div', { key: 'steward-root' }, [
     createElement('div', { key: 'backdrop', className: 'dss_backdrop', onClick: onClose }),
