@@ -111,6 +111,15 @@ const SORT_CHIPS: readonly { id: HostSortMode; labelKey: LocaleKey }[] = [
   { id: 'time', labelKey: 'sort.time' },
 ]
 
+/** 命中粒度：merge=会话分组取最强（既有行为），expand=同会话多命中分行显示。 */
+type GroupMode = 'merge' | 'expand'
+
+/** 命中粒度 chips（仅内容模式）。 */
+const GROUP_CHIPS: readonly { id: GroupMode; labelKey: LocaleKey }[] = [
+  { id: 'merge', labelKey: 'group.merge' },
+  { id: 'expand', labelKey: 'group.expand' },
+]
+
 /**
  * The identity of one content-search request, derived from every input that
  * changes the result set.
@@ -128,8 +137,8 @@ const SORT_CHIPS: readonly { id: HostSortMode; labelKey: LocaleKey }[] = [
  * @param archivedFilter - the retrieval-domain chip (all/active/archived).
  * @returns an opaque key, stable for equal inputs.
  */
-function contentRequestKey(normalized: string, contentType: ContentType, sortBy: HostSortMode, archivedFilter: ArchivedDomain, dateRange: { from: string; to: string }): string {
-  return `${normalized}\u0000${contentType}\u0000${sortBy}\u0000${archivedFilter}\u0000${dateRange.from}\u0000${dateRange.to}`
+function contentRequestKey(normalized: string, contentType: ContentType, sortBy: HostSortMode, archivedFilter: ArchivedDomain, dateRange: { from: string; to: string }, groupMode: GroupMode): string {
+  return `${normalized}\u0000${contentType}\u0000${sortBy}\u0000${archivedFilter}\u0000${dateRange.from}\u0000${dateRange.to}\u0000${groupMode}`
 }
 
 /**
@@ -151,6 +160,25 @@ function readStoredSort(): HostSortMode {
 function writeStoredSort(next: HostSortMode): void {
   try {
     window.localStorage.setItem(SORT_STORE_KEY, next)
+  } catch {
+    // ignore: the choice applies for the rest of this session regardless
+  }
+}
+
+/** 命中粒度持久化（与排序同款：耐久偏好，不是会话情绪）。 */
+const GROUP_STORE_KEY = 'dsh-search-index.groupMode'
+
+function readStoredGroup(): GroupMode {
+  try {
+    return window.localStorage.getItem(GROUP_STORE_KEY) === 'expand' ? 'expand' : 'merge'
+  } catch {
+    return 'merge'
+  }
+}
+
+function writeStoredGroup(next: GroupMode): void {
+  try {
+    window.localStorage.setItem(GROUP_STORE_KEY, next)
   } catch {
     // ignore: the choice applies for the rest of this session regardless
   }
@@ -338,6 +366,12 @@ function SwitchPanel({
     writeStoredSort(next)
     setSortByState(next)
   }
+  // 命中粒度（分开显示开关）：expand=同会话多命中各自成行（DRS expand=1 臂）。
+  const [groupMode, setGroupModeState] = useState<GroupMode>(readStoredGroup)
+  const setGroupMode = (next: GroupMode): void => {
+    writeStoredGroup(next)
+    setGroupModeState(next)
+  }
   const [sessions, setSessions] = useState<HostSessionItem[] | null>(null)
   const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [content, setContent] = useState<{ query: string; status: 'idle' | 'loading' | 'ready' | 'error'; items: HostContentHit[]; error?: string }>({
@@ -418,7 +452,7 @@ function SwitchPanel({
     }
     let cancelled = false
     const requestType: ContentType = contentType
-    const requestKey = contentRequestKey(normalized, requestType, sortBy, archivedFilter, { from: dateFrom, to: dateTo })
+    const requestKey = contentRequestKey(normalized, requestType, sortBy, archivedFilter, { from: dateFrom, to: dateTo }, groupMode)
     setContent(prev => ({ query: requestKey, status: 'loading', items: prev.query === requestKey ? prev.items : [] }))
     const timer = window.setTimeout(() => {
       callHost<HostContentHit>('content-search', {
@@ -427,6 +461,7 @@ function SwitchPanel({
         types: requestType === 'all' ? undefined : [requestType],
         sortBy,
         archived: archivedFilter,
+        expand: groupMode === 'expand' || undefined,
         from: dateFrom === '' ? undefined : dateFrom,
         to: dateTo === '' ? undefined : dateTo,
       }).then((res) => {
@@ -443,7 +478,7 @@ function SwitchPanel({
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [mode, normalized, contentType, sortBy, archivedFilter, dateFrom, dateTo])
+  }, [mode, normalized, contentType, sortBy, archivedFilter, dateFrom, dateTo, groupMode])
 
   // Focus the input on open; reset mode on every open.
   useEffect(() => {
@@ -492,7 +527,7 @@ function SwitchPanel({
   if (sessionsError !== null) {
     children.push(createElement('div', { key: 'err', className: 'dsws_error' }, translate(t, 'panel.sessionsError', { error: sessionsError })))
   }
-  const activeRequestKey = contentRequestKey(normalized, contentType, sortBy, archivedFilter, { from: dateFrom, to: dateTo })
+  const activeRequestKey = contentRequestKey(normalized, contentType, sortBy, archivedFilter, { from: dateFrom, to: dateTo }, groupMode)
   const activeContent = content.query === activeRequestKey ? content : { query: activeRequestKey, status: 'loading' as const, items: [] }
   if (mode === 'title') {
     if (sessions === null) {
@@ -562,16 +597,18 @@ function SwitchPanel({
         className: 'dsws_list',
         role: 'listbox',
         'aria-label': translate(t, 'panel.contentSearch'),
-      }, activeContent.items.slice(0, 200).map(item => createElement('li', { key: item.sessionId, role: 'option' }, createElement('button', {
+      }, activeContent.items.slice(0, 200).map(item => createElement('li', { key: `${item.sessionId}:${item.seq}`, role: 'option' }, createElement('button', {
         type: 'button',
         className: 'dsws_row',
         // B 路线定位臂（T7.4）：先开会话，再异步把命中行滚进视口高亮；
-        // 定位失败静默——行为与接臂前逐行一致（仅打开）。
+        // 定位失败静默——行为与接臂前逐行一致（仅打开）。展开态下同会话
+        // 多行各自成行，行键/定位态键都降到 (sessionId,seq) 粒度。
         onClick: () => {
+          const hitKey = `${item.sessionId}:${item.seq}`
           open(item.sessionId)
-          setLocateStatus(s => ({ ...s, [item.sessionId]: 'pending' }))
+          setLocateStatus(s => ({ ...s, [hitKey]: 'pending' }))
           void locateSearchHit(item).then(ok => {
-            setLocateStatus(s => ({ ...s, [item.sessionId]: ok ? 'ok' : 'fail' }))
+            setLocateStatus(s => ({ ...s, [hitKey]: ok ? 'ok' : 'fail' }))
           })
         },
       }, [
@@ -581,13 +618,14 @@ function SwitchPanel({
           // The session clock — the very field the 「时间」 ordering sorts by and
           // the one the title rows already show. Ordering rows by a time the
           // rows never display is illegible: you cannot tell what the sort did.
-          createElement('span', { key: 'time', className: 'dsws_tag' }, fmtTime(item.updatedAt)),
-          ...(locateStatus[item.sessionId] === undefined ? [] : [createElement('span', {
+          // 展开态例外：同会话各行 updatedAt 相同，改显命中行自己的 time。
+          createElement('span', { key: 'time', className: 'dsws_tag' }, fmtTime(groupMode === 'expand' ? item.time : item.updatedAt)),
+          ...(locateStatus[`${item.sessionId}:${item.seq}`] === undefined ? [] : [createElement('span', {
             key: 'loc', className: 'dsws_tag',
-            title: locateStatus[item.sessionId] === 'pending' ? '定位巡逻中'
-              : locateStatus[item.sessionId] === 'ok' ? '已跳转到命中行'
+            title: locateStatus[`${item.sessionId}:${item.seq}`] === 'pending' ? '定位巡逻中'
+              : locateStatus[`${item.sessionId}:${item.seq}`] === 'ok' ? '已跳转到命中行'
                 : '未能定位（行未渲染/文本被拆分/超时）',
-          }, locateStatus[item.sessionId] === 'pending' ? '⏳' : locateStatus[item.sessionId] === 'ok' ? '✓' : '✗')]),
+          }, locateStatus[`${item.sessionId}:${item.seq}`] === 'pending' ? '⏳' : locateStatus[`${item.sessionId}:${item.seq}`] === 'ok' ? '✓' : '✗')]),
         ]),
         createElement('span', { key: 's', className: 'dsws_snippet' }, item.snippet || translate(t, 'panel.noText')),
       ])))))
@@ -649,6 +687,16 @@ function SwitchPanel({
           className: `dsws_chip${contentType === chip.id ? ' dsws_chipActive' : ''}`,
           'aria-pressed': contentType === chip.id,
           onClick: () => { setContentType(chip.id) },
+        }, translate(t, chip.labelKey))) : []),
+        // 命中粒度开关（仅内容模式）：分开显示=同会话多命中各自成行
+        // （DRS expand=1 臂）；合并=每会话只显最强命中（既有行为）。
+        ...(mode === 'content' ? GROUP_CHIPS.map(chip => createElement('button', {
+          key: `g-${chip.id}`,
+          type: 'button',
+          className: `dsws_chip${groupMode === chip.id ? ' dsws_chipActive' : ''}`,
+          'aria-pressed': groupMode === chip.id,
+          title: translate(t, chip.id === 'expand' ? 'group.expand.hint' : 'group.merge.hint'),
+          onClick: () => { setGroupMode(chip.id) },
         }, translate(t, chip.labelKey))) : []),
         // Ordering sits on the same row, pushed right: it filters the same
         // result set the type chips do, so it is not a separate toolbar.

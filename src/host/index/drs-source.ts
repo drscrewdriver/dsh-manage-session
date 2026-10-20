@@ -162,6 +162,8 @@ export class DrsCorpusSource {
     to?: number
     sortBy?: 'relevance' | 'time'
     limit?: number
+    /** 命中展开（wire `expand=1`）：同会话多命中各自成行；缺省聚合。 */
+    expand?: boolean
     /** 同源 Host 覆盖（转发调用方请求头；优先于装配 baseUrl）。 */
     atHost?: string
   }): Promise<{
@@ -183,6 +185,7 @@ export class DrsCorpusSource {
     if (request.to !== undefined) params.set('to', String(request.to))
     if (request.sortBy === 'time') params.set('sort', 'time')
     if (request.limit !== undefined) params.set('limit', String(request.limit))
+    if (request.expand === true) params.set('expand', '1')
     const body = await this.getJson(`?${params.toString()}`, request.atHost)
     const hits = Array.isArray(body['hits']) ? body['hits'] as Record<string, unknown>[] : []
     return hits.map(row => ({

@@ -478,7 +478,7 @@ async function contentSearch(
   payload: unknown,
   requestHost = '',
 ): Promise<{ ok: boolean; items?: unknown[]; error?: string }> {
-  const record = payload as { query?: unknown; limit?: unknown; types?: unknown; sortBy?: unknown; archived?: unknown; from?: unknown; to?: unknown } | null
+  const record = payload as { query?: unknown; limit?: unknown; types?: unknown; sortBy?: unknown; archived?: unknown; expand?: unknown; from?: unknown; to?: unknown } | null
   const query = typeof record?.query === 'string' ? record.query.trim() : ''
   if (query === '') return { ok: false, error: '缺少 query' }
   // 检索域 chip（全部/活跃/归档）；未知值回退 'all'，新旧客户端互相兼容。
@@ -514,6 +514,9 @@ async function contentSearch(
       archived,
       sortBy,
       limit,
+      // 命中展开（面板「分开显示」开关）：同会话多命中各自成行；
+      // 非 true 一律缺省聚合（旧客户端零感知）。
+      ...(record?.expand === true ? { expand: true } : {}),
       ...(requestHost === '' ? {} : { atHost: requestHost }),
       ...(fromMs === undefined ? {} : { from: fromMs }),
       ...(toMs === undefined ? {} : { to: toMs }),

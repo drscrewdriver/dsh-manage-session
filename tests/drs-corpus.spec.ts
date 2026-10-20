@@ -197,7 +197,27 @@ describe('DrsCorpusSource.searchGrouped(T7.3 直连臂)', () => {
     assert.ok(seenUrl.includes('kinds=user%2Fmessage%2Ctool%2Fcall'))
     assert.ok(seenUrl.includes('archived=active'))
     assert.ok(seenUrl.includes('sort=time'))
+    // 缺省不展开：旧请求形状零变化（expand 参数缺席）
+    assert.ok(!seenUrl.includes('expand='), seenUrl)
     assert.deepEqual(hits, [{ sessionId: 's1', title: 'T', seq: 7, type: 'user/message', time: 100, updatedAt: 200, snippet: '节选…' }])
+  })
+  it('expand=true 透传 wire（面板「分开显示」开关 → DRS expand=1 臂）', async () => {
+    let seenUrl = ''
+    const source = new DrsCorpusSource({
+      baseUrl: 'http://127.0.0.1:5990',
+      fetchImpl: (async (input: unknown) => {
+        seenUrl = String(input)
+        return jsonResponse({ ok: true, query: 'x', hits: [
+          { session_id: 's1', title: 'T', seq: 7, type: 'user/message', time: 100, updated_at: 200, snippet: '甲…' },
+          { session_id: 's1', title: 'T', seq: 9, type: 'assistant/message', time: 140, updated_at: 200, snippet: '乙…' },
+        ] })
+      }) as unknown as typeof fetch,
+    })
+    const hits = await source.searchGrouped({ query: 'x', expand: true })
+    assert.ok(seenUrl.includes('expand=1'), seenUrl)
+    // 同会话两行各自成命中（行键 (sessionId,seq) 唯一性由消费侧保证）
+    assert.equal(hits.length, 2)
+    assert.deepEqual(hits.map(h => h.seq), [7, 9])
   })
   it('probe:包络 ok=true 报真、网络失败报假且不抛', async () => {
     const up = new DrsCorpusSource({
