@@ -28,6 +28,9 @@ import { configureLocator } from './search/locate.ts'
 import {
   SESSION_MENU_DELETE_ID, SESSION_MENU_DELETE_ORDER, SESSION_MENU_SEAT, StewardDeleteMenuItem,
 } from './session-menu.tsx'
+import {
+  installLegacySessionMenuDelete, makeDirectDeleteProbe, purgeSessionById,
+} from './session-menu-legacy.ts'
 import { dictionaries as searchDictionaries, NS as SEARCH_NS, translate as translateSearch, type LocaleKey as SearchLocaleKey } from './search/locales.ts'
 
 export { STEWARD_ENTRY_ID, STEWARD_SETTINGS_NAMESPACE, TAB_HEALTH }
@@ -313,6 +316,20 @@ export function apply(ctx: Context): void {
     { name: SESSION_MENU_SEAT, id: SESSION_MENU_DELETE_ID, order: SESSION_MENU_DELETE_ORDER, locale: NS },
     StewardDeleteMenuItem,
   ), 'dsh-session-steward: session menu delete row')
+
+  // 老线（≤0.1.5）菜单无席位——DOM 注入臂补上删除行：监听 portal 出的
+  // [role=menu]、从被点锚点行的 React fiber 取 sessionId、插两步确认删除。
+  // 现代线（0.1.7+）席位行已带 data-steward-menu-delete 标记 → 注入器 dedup
+  // 跳过，不会出两条。全程 best-effort，异常只影响老线菜单、不拖垮侧栏。
+  if (typeof document !== 'undefined') {
+    const probe = makeDirectDeleteProbe()
+    ctx.effect(() => installLegacySessionMenuDelete({
+      doc: document,
+      purge: purgeSessionById,
+      isEnabled: probe,
+      lang: () => (typeof navigator !== 'undefined' ? navigator.language : undefined),
+    }), 'dsh-session-steward: legacy session menu delete injector')
+  }
 
   // 家族节宿主选举（次优先级）：宿主 dsh-thinking-levels 缺席时顶上「起子插件
   // 设置」节。下载量排名 session-steward(1090) 低于 session-guard(1522) → 宽限期

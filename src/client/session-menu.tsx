@@ -66,6 +66,9 @@ export function StewardDeleteMenuItem(props: StewardMenuDeleteProps) {
   return createElement('button', {
     type: 'button',
     role: 'menuitem',
+    // dedup 钩子：老线 DOM 注入臂据此判断菜单是否已有删除行（现代线席位行
+    // 已渲染则跳过注入，避免两条删除）。
+    'data-steward-menu-delete': '1',
     style: {
       display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
       boxSizing: 'border-box', padding: '6px 10px', margin: 0, border: 'none',
