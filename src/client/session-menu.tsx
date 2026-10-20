@@ -15,6 +15,7 @@
  */
 import { createElement, useEffect, useState } from 'react'
 import { callHostAny, callSteward, type HostIndexStatus } from './search/host-api.ts'
+import { TRASH_ICON_SVG } from './session-menu-legacy.ts'
 
 /** 宿主菜单席位名（0.1.7+ 存在）。 */
 export const SESSION_MENU_SEAT = 'sidebar.workspaces.session.menu.item'
@@ -83,5 +84,13 @@ export function StewardDeleteMenuItem(props: StewardMenuDeleteProps) {
     },
     // 指针移出菜单行区域即解弦（防误触残留态；菜单容器关闭由卸载兜底）。
     onMouseLeave: () => { setArmed(false) },
-  }, armed ? (t?.('menu.deleteSession.confirm') ?? '确认删除') : (t?.('menu.deleteSession') ?? '删除会话'))
+  }, [
+    // 图标槽（内联宿主 IconTrashOutline16，与 rename/fork/archive 图标对齐；
+    // fill=currentColor 随行色变红）。
+    createElement('span', {
+      key: 'icon', style: { display: 'inline-flex', flex: 'none', width: 16, height: 16, alignItems: 'center' },
+      dangerouslySetInnerHTML: { __html: TRASH_ICON_SVG },
+    }),
+    createElement('span', { key: 'label' }, armed ? (t?.('menu.deleteSession.confirm') ?? '确认删除') : (t?.('menu.deleteSession') ?? '删除会话')),
+  ])
 }
