@@ -59,6 +59,8 @@ const VISIBILITY_SLACK = 40
 /** 归一化/取 needle 用的一个 DRS 段行（wire 蛇形，只声明消费字段）。 */
 export interface LocateRowFace {
   seq: number
+  /** 行归属 turn（阅读模式 [data-reader-turn] 直接寻址键）。 */
+  turn?: number
   text?: string
   search_text?: string
   on_surface?: number
@@ -101,19 +103,84 @@ export function resolveNeedle(row: LocateRowFace | undefined): string | null {
  * 否则搜索面板自己的结果行（dsws_snippet 的 span，文本就含 needle 前缀）会抢先命中。 */
 const MESSAGE_TAGS = 'p, li, pre, blockquote, h1, h2, h3, h4, td, code'
 
+/** 阅读线偏移（dsh-tidy-display conversation-scroll.ts READING_LINE_OFFSET_PX 同值）。 */
+const READING_LINE_OFFSET_PX = 24
+
+/** 有布局才叫可见：未挂载页签（display:none）的 rect 全 0，旧视口判定会误判驻留。 */
+function hasLayout(el: Element): boolean {
+  return (el as HTMLElement).offsetHeight > 0 || (el as HTMLElement).offsetWidth > 0
+}
+
+/** 祖先滚动盒（tidy-display 官方选择子）；缺席时退化窗口滚动。 */
+function scrollerOf(el: Element): HTMLElement | null {
+  return el.closest('[data-conversation-scroll]')
+}
+
+/** 在滚动窗口坐标系里把行着陆到顶部偏读线位——**绝不 scrollIntoView**
+ * （dsh-tidy-display 实锤：它会爬祖先 scroller 把 sticky composer 抬离底部，
+ * 随后宿主回贴 = 「还停在底部」）；与阅读模式 landTurn 同款 scrollTop 数学。 */
+function landRow(el: Element, offsetPx = READING_LINE_OFFSET_PX): void {
+  const html = el as HTMLElement
+  const port = scrollerOf(html) ?? (el.ownerDocument.scrollingElement as HTMLElement | null) ?? html
+  if (port === html) {
+    html.scrollIntoView({ block: 'start', behavior: 'auto' })
+    return
+  }
+  port.scrollTop += html.getBoundingClientRect().top - port.getBoundingClientRect().top - offsetPx
+}
+
+/** 行在**其滚动窗口**内是否已就位（驻留判定也用窗口系，不用视口系）。 */
+function landedInPort(el: Element): boolean {
+  const html = el as HTMLElement
+  if (!hasLayout(html)) return false
+  const port = scrollerOf(html)
+  if (port === null) {
+    const rect = html.getBoundingClientRect()
+    const vh = html.ownerDocument.defaultView?.innerHeight ?? 0
+    return rect.top >= -VISIBILITY_SLACK && rect.bottom <= vh + VISIBILITY_SLACK
+  }
+  const flow = html.getBoundingClientRect().top - port.getBoundingClientRect().top
+  return flow >= -VISIBILITY_SLACK && flow <= port.clientHeight + VISIBILITY_SLACK
+}
+
+/** 阅读模式优先：命中行若落在 [data-reader-turn] 段内，直接返该段（turn 级
+ * 锚点由插件自标，比文本匹配稳）；env.turn 给定时还能直接按 turn 号选段。 */
+function findReaderRow(root: ParentNode, needle: string, turn: number | undefined): Element | null {
+  if (turn !== undefined && turn > 0) {
+    const direct = root.querySelector(`[data-reader-turn="${String(turn)}"]`)
+    if (direct !== null && hasLayout(direct)) return direct
+  }
+  for (const el of Array.from(root.querySelectorAll(MESSAGE_TAGS))) {
+    if (!hasLayout(el)) continue
+    if (el.closest('[class*="dsws_"], [role="dialog"]') !== null) continue
+    const text = el.textContent
+    if (text === null || !normalizeForMatch(text).includes(needle)) continue
+    const section = el.closest('[data-reader-turn]')
+    if (section !== null && hasLayout(section)) return section
+    return el
+  }
+  return null
+}
+
 /**
  * 找正文行：多义时取 DOM 最深者（段落本体而非包裹层）；**排除插件自家
  * 子树**（dsws_ 前缀类与任何 role=dialog 弹层）——面板行/管理台行都是
  * 目标文本的镜像，绝不允许当作跳转目的地。
  */
-function findMessageElement(root: ParentNode, needle: string): Element | null {
+function findMessageElement(root: ParentNode, needle: string, turn?: number): Element | null {
+  // 阅读模式（dsh-tidy-display）在场时优先进其 turn 锚点体系；缺席自动走官方会话视图。
+  const reader = findReaderRow(root, needle, turn)
+  if (reader !== null) return reader
   let best: Element | null = null
   let bestDepth = -1
   for (const el of Array.from(root.querySelectorAll(MESSAGE_TAGS))) {
+    if (!hasLayout(el)) continue // 未激活页签里的隐藏行不参与匹配（防驻留误判/跳错页签）
     const text = el.textContent
     if (text === null) continue
     if (el.closest('[class*="dsws_"], [role="dialog"]') !== null) continue
     if (!normalizeForMatch(text).includes(needle)) continue
+    const section = el.closest('[data-reader-turn]')
+    if (section !== null) continue // 段级已由 findReaderRow 处理，这里只收散行
     let depth = 0
     for (let n: Node | null = el.parentElement; n !== null; n = n.parentElement) depth += 1
     if (depth > bestDepth) {
@@ -171,12 +238,7 @@ export function configureLocator(deps: LocatorDeps): void {
   injectedDeps = deps
 }
 
-/** 目标行是否基本完整落在视口内（巡逻驻留判定）。 */
-function inViewport(el: Element, win: Window): boolean {
-  const rect = el.getBoundingClientRect()
-  const vh = win.innerHeight || (el.ownerDocument.documentElement.clientHeight || 0)
-  return rect.top >= -VISIBILITY_SLACK && rect.bottom <= vh + VISIBILITY_SLACK
-}
+/** 目标行是否基本完整落在**其滚动窗口**内由 landedInPort 判定；旧视口函数已废弃。 */
 
 /**
  * 主管线：拉 DRS 段行 → 选 needle → 巡逻宿主 DOM 补滚 → 驻留后高亮。
@@ -197,6 +259,7 @@ export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}):
     const row = body.rows.find(r => Number(r.seq) === Number(hit.seq))
     const needle = resolveNeedle(row)
     if (needle === null) { log(`locate: skip row seq=${String(hit.seq)} (shadowed/短文本/无行)`); return false }
+    const targetTurn = typeof row?.turn === 'number' ? row.turn : undefined
 
     const startedAt = Date.now()
     let deadline = startedAt + (env.timeoutMs ?? LOCATE_TIMEOUT_MS)
@@ -224,7 +287,7 @@ export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}):
       const ticker = setInterval(() => {
         if (userTookOver) { finish(false, 'yield user'); return }
         if (Date.now() >= deadline) { finish(false, `locate timeout (pages=${String(pagesPulled)})`); return }
-        const el = findMessageElement(doc.body ?? doc, needle)
+        const el = findMessageElement(doc.body ?? doc, needle, targetTurn)
         if (el === null) {
           // 目标行不在 DOM：历史分页面（IConversation.loadOlder）——没找到就
           // 往回拉页，每拉一页给 2s 渲染窗口；拉满/拉尽则维持原超时。
@@ -243,7 +306,7 @@ export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}):
           }
           return // DOM 未就绪/会话还在切换：下一轮再找
         }
-        if (inViewport(el, win)) {
+        if (landedInPort(el)) {
           // 从未滚过且本来就可见（同会话当前视口）=直达；否则须驻留过 STICK 窗。
           if (lastScrollAt === 0 || Date.now() - lastScrollAt >= STICK_MS) {
             flashElement(el)
@@ -251,10 +314,11 @@ export async function locateSearchHit(hit: HostContentHit, env: LocateEnv = {}):
           }
           return
         }
-        // 目标不在视口：若距上次补滚超一个 tick，重新滚（behavior=auto——smooth
-        // 动画会被宿主随后的贴底/恢复打断且互相取消）。会话重渲染换节点也走这条。
+        // 目标不在滚动窗口内：若距上次补滚超一个 tick，重新着陆（landRow 只写
+        // scroller.scrollTop，绝不 scrollIntoView——后者会抬走 sticky composer
+        // 并触发宿主回贴底部，tidy-display 实锤）。会话重渲染换节点也走这条。
         if (Date.now() - lastScrollAt >= TICK_MS) {
-          el.scrollIntoView({ block: 'center', behavior: 'auto' })
+          landRow(el)
           lastScrollAt = Date.now()
         }
       }, TICK_MS)
