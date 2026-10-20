@@ -38,6 +38,7 @@ import type { StewardRegistryFace } from './host/history/archive-source.ts'
 import { locateSessionUsage, purgeHistory } from './host/history/purge.ts'
 import { appendRetiredTombstones, defaultTombstoneDir } from './host/history/tombstones.ts'
 import {
+  bridgeOverlay,
   installLegacySettingsBridge,
   settingsDescribe,
   settingsMutate,
@@ -1131,20 +1132,35 @@ export async function handleMethod(
 export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearchConfig> = {}): void {
   // 0.1.7：volatile 字段每次读取解引出最新快照（开关即时生效），不再有任何
   // settings 注册调用。
-  const current = (): Required<StewardConfig> & Required<SwitchSearchConfig> => ({
-    enabled: readVolatileValue(config.enabled) ?? DEFAULT_CONFIG.enabled,
-    historyFiles: readVolatileValue(config.historyFiles) ?? DEFAULT_CONFIG.historyFiles,
-    healthCheck: readVolatileValue(config.healthCheck) ?? DEFAULT_CONFIG.healthCheck,
-    search: readVolatileValue(config.search) ?? DEFAULT_CONFIG.search,
-    directDelete: readVolatileValue(config.directDelete) ?? DEFAULT_CONFIG.directDelete,
-    defaultMode: readVolatileValue(config.defaultMode) ?? SWITCH_DEFAULT_CONFIG.defaultMode,
-    autoSync: readVolatileValue(config.autoSync) ?? SWITCH_DEFAULT_CONFIG.autoSync,
-    syncIntervalMs: readVolatileValue(config.syncIntervalMs) ?? SWITCH_DEFAULT_CONFIG.syncIntervalMs,
-    archiveKeep: readVolatileValue(config.archiveKeep) ?? SWITCH_DEFAULT_CONFIG.archiveKeep,
-    indexDir: readVolatileValue(config.indexDir) ?? SWITCH_DEFAULT_CONFIG.indexDir,
-    corpusSource: readVolatileValue(config.corpusSource) ?? SWITCH_DEFAULT_CONFIG.corpusSource,
-    drsBaseUrl: readVolatileValue(config.drsBaseUrl) ?? SWITCH_DEFAULT_CONFIG.drsBaseUrl,
-  })
+  // ≤0.1.5 补口（3085 实锤）：老线组合 config 是静态缺省，卡的写落在宿主
+  // settings 服务（下方 settingsBridge）——不叠加则「拨得动、不生效」；
+  // 已写键才采信（型别不符/缺席回退组合值），桥未咬合（0.1.7+）零叠加。
+  const current = (): Required<StewardConfig> & Required<SwitchSearchConfig> => {
+    const { steward, search } = bridgeOverlay(settingsBridge)
+    const bool = (doc: Record<string, unknown>, key: string, v: boolean): boolean =>
+      typeof doc[key] === 'boolean' ? (doc[key] as boolean) : v
+    const num = (doc: Record<string, unknown>, key: string, v: number): number =>
+      typeof doc[key] === 'number' && Number.isFinite(doc[key] as number) ? (doc[key] as number) : v
+    const str = (doc: Record<string, unknown>, key: string, v: string): string =>
+      typeof doc[key] === 'string' ? (doc[key] as string) : v
+    const mode = (v: 'title' | 'content'): 'title' | 'content' =>
+      search['defaultMode'] === 'title' || search['defaultMode'] === 'content' ? (search['defaultMode'] as 'title' | 'content') : v
+    return {
+      enabled: bool(steward, 'enabled', readVolatileValue(config.enabled) ?? DEFAULT_CONFIG.enabled),
+      historyFiles: bool(steward, 'historyFiles', readVolatileValue(config.historyFiles) ?? DEFAULT_CONFIG.historyFiles),
+      healthCheck: bool(steward, 'healthCheck', readVolatileValue(config.healthCheck) ?? DEFAULT_CONFIG.healthCheck),
+      search: bool(steward, 'search', readVolatileValue(config.search) ?? DEFAULT_CONFIG.search),
+      directDelete: bool(steward, 'directDelete', readVolatileValue(config.directDelete) ?? DEFAULT_CONFIG.directDelete),
+      defaultMode: mode(readVolatileValue(config.defaultMode) ?? SWITCH_DEFAULT_CONFIG.defaultMode),
+      autoSync: bool(search, 'autoSync', readVolatileValue(config.autoSync) ?? SWITCH_DEFAULT_CONFIG.autoSync),
+      syncIntervalMs: num(search, 'syncIntervalMs', readVolatileValue(config.syncIntervalMs) ?? SWITCH_DEFAULT_CONFIG.syncIntervalMs),
+      archiveKeep: num(search, 'archiveKeep', readVolatileValue(config.archiveKeep) ?? SWITCH_DEFAULT_CONFIG.archiveKeep),
+      indexDir: str(search, 'indexDir', readVolatileValue(config.indexDir) ?? SWITCH_DEFAULT_CONFIG.indexDir),
+      // corpusSource/drsBaseUrl 不在 legacy 桥 schema（老线无 DRS 接线面）：只认组合值。
+      corpusSource: readVolatileValue(config.corpusSource) ?? SWITCH_DEFAULT_CONFIG.corpusSource,
+      drsBaseUrl: str(search, 'drsBaseUrl', readVolatileValue(config.drsBaseUrl) ?? SWITCH_DEFAULT_CONFIG.drsBaseUrl),
+    }
+  }
 
   const log = (message: string): void => {
     try {

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../src/config.ts'
 import { SWITCH_SEARCH_SETTINGS_NAMESPACE } from '../src/config.ts'
 import { handleMethod, type StewardRuntime } from '../src/index.ts'
-import type { BridgeState, LegacySettingsBridge } from '../src/host/settings-bridge.ts'
+import { bridgeOverlay, type BridgeState, type LegacySettingsBridge } from '../src/host/settings-bridge.ts'
 
 /** 内存版 legacy settings 服务（register 忽略 schema；get/update 走同一份文档）。 */
 function fakeBridge(initial: Record<string, Record<string, unknown>> = {}): {
@@ -141,5 +141,32 @@ describe('settings-mutate', () => {
     expect(res.ok).toBe(false)
     expect(res.error).toContain('宿主拒绝写入')
     expect(state.revision).toBe(3)
+  })
+})
+
+describe('bridgeOverlay（运行时叠加文档——3085 实锤补口）', () => {
+  it('桥未咬合（modern/undefined）：两 ns 皆空对象 = 零叠加', () => {
+    expect(bridgeOverlay({ bridge: undefined, revision: 0 })).toEqual({ steward: {}, search: {} })
+  })
+
+  it('桥咬合：只回已写键、不铺缺省；两 ns 分开不串', () => {
+    const docs = fakeBridge({ 'session-steward': { directDelete: true }, 'switch-search': { syncIntervalMs: 60_000 } })
+    const ov = bridgeOverlay({ bridge: docs.face, revision: 0 })
+    // 已写键原样透出
+    expect(ov.steward).toEqual({ directDelete: true })
+    expect(ov.search).toEqual({ syncIntervalMs: 60_000 })
+    // 未写键缺席（不铺 DEFAULT_CONFIG）——current() 据此回退组合值
+    expect('enabled' in ov.steward).toBe(false)
+    expect('defaultMode' in ov.search).toBe(false)
+    // 两 ns 各自独立：session-steward 的 enabled 不会被 switch-search 串改
+    expect(ov.steward['syncIntervalMs']).toBeUndefined()
+    expect(ov.search['directDelete']).toBeUndefined()
+  })
+
+  it('空文档桥：两 ns 都回空对象（老线从未拨过任何开关）', () => {
+    const docs = fakeBridge()
+    const ov = bridgeOverlay({ bridge: docs.face, revision: 0 })
+    expect(ov.steward).toEqual({})
+    expect(ov.search).toEqual({})
   })
 })

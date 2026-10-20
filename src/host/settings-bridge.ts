@@ -183,6 +183,31 @@ export function describeNamespaces(state: BridgeState): BridgeNamespaces {
   return { [STEWARD_SETTINGS_NAMESPACE]: {}, [SWITCH_SEARCH_SETTINGS_NAMESPACE]: {} }
 }
 
+/**
+ * 运行时叠加文档（≤0.1.5 专用，3085 实锤补口）：卡写路径落宿主 settings
+ * 服务，而组合入口 config 是静态缺省——不叠加则开关「拨得动、不生效」。
+ * 与 describe 不同：**不铺缺省**，只回两 ns 的原始已写键（盘上 settings.yaml
+ * 实测只含被拨过的键，未写键缺席→自然回退组合 config）。
+ * 两 ns 分开返回（不 flatten）：`enabled` 在两 ns 都有——合并包里它是同一
+ * master（config.ts 注），但 legacy 分家存，flatten 会互相串改；current()
+ * 按字段取权威 ns（master 类字段只认 session-steward）。桥未咬合恒空=零叠加。
+ */
+export interface BridgeOverlayDocs {
+  /** session-steward ns 原始已写文档（桥未咬合时 = {}）。 */
+  steward: Record<string, unknown>
+  /** switch-search ns 原始已写文档（桥未咬合时 = {}）。 */
+  search: Record<string, unknown>
+}
+
+export function bridgeOverlay(state: BridgeState): BridgeOverlayDocs {
+  const { bridge } = state
+  if (bridge === undefined) return { steward: {}, search: {} }
+  return {
+    steward: bridge.get(STEWARD_SETTINGS_NAMESPACE) ?? {},
+    search: bridge.get(SWITCH_SEARCH_SETTINGS_NAMESPACE) ?? {},
+  }
+}
+
 /** describe 响应。 */
 export function settingsDescribe(state: BridgeState): {
   ok: boolean
