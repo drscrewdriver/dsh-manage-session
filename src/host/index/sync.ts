@@ -75,7 +75,7 @@ export interface SwitchDrsCorpusDoc {
 
 /**
  * DRS 语料源端口(T7.1):corpusSource='drs' 时语料改从
- * dsh-reference-session 投影库取,docs 直插引擎;不可达时整轮回退原生
+ * dsh-reference-session-collector 投影库取,docs 直插引擎;不可达时整轮回退原生
  * sessionQuery + 文件兜底链路。单测注入普通对象。
  */
 export interface SwitchDrsCorpusSource {
@@ -192,7 +192,7 @@ export class SwitchWatermarkSync {
     this.state.state = 'syncing'
     const passStart = Date.now()
     try {
-      // DRS 语料轮(T7.1):corpusSource='drs' 时语料从 dsh-reference-session
+      // DRS 语料轮(T7.1):corpusSource='drs' 时语料从 dsh-reference-session-collector
       // 投影库取(docs 直插)。整轮失败(网络/路由/包络)→ 回退原生链路,一次
       // 轮询永远有产出;水位语义切换的首轮全量重灌是有意的(mode switch 代价)。
       if (this.drsSource !== undefined) {

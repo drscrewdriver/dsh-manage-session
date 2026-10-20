@@ -462,7 +462,7 @@ export class SwitchIndexEngine {
   /**
    * 会话头直写（DRS 直连时代的同步轮专用，T7.3）：只维护 sessions 元数据
    * （水位/标题/目录/末时间/归档），**不碰 docs/docs_fts**——内容检索
-   * 已直连 dsh-reference-session（op=search&group=session），本地正文索引
+   * 已直连 dsh-reference-session-collector（op=search&group=session），本地正文索引
    * 退役，存量 docs 行自然老化不再新增。空标题保留旧行（同 upsertSessionDocs）。
    */
   upsertSessionHead(input: {

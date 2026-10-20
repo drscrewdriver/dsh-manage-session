@@ -18,7 +18,7 @@
  * 一次 loadOlder 往回翻页，直到目标 turn 的行进入 DOM 再驻留跳转；
  * 翻页能力经 configureLocator 由 client apply 注入（本模块不持 ctx）。
  *
- * 数据面：同源 GET /api/dsh-reference-session?op=session&session=<id>
+ * 数据面：同源 GET /api/dsh-reference-session-collector?op=session&session=<id>
  * ——行含 seq/text/search_text/surface_text/on_surface/compressed：
  * - on_surface=0（被替换原文行）：GUI 不渲染该文本 → 放弃定位（不是失败）；
  * - compressed=1：GUI 渲染的是链解析后的 surface_text（替身文本）；
@@ -26,8 +26,8 @@
  */
 import type { HostContentHit } from './host-api.ts'
 
-/** DRS fenced 路由（同源相对路径，与 dsh-reference-session DRS_API_PATH 字面一致）。 */
-const DRS_ROUTE = '/api/dsh-reference-session'
+/** DRS fenced 路由（同源相对路径，与 dsh-reference-session-collector DRS_API_PATH 字面一致）。 */
+const DRS_ROUTE = '/api/dsh-reference-session-collector'
 
 /** 定位总超时（打开会话后 DOM 渲染窗口）。 */
 const LOCATE_TIMEOUT_MS = 8_000

@@ -504,7 +504,7 @@ async function contentSearch(
     types = ['user', 'reply']
   }
   // T7.3 硬依赖直连臂：检索语义（会话分组/类型加权/表面与归档日期过滤/
-  // 锚定节选）全部在 dsh-reference-session 投影库侧完成（op=search&group=session，
+  // 锚定节选）全部在 dsh-reference-session-collector 投影库侧完成（op=search&group=session，
   // 语料已经过注入段剥离）。DRS 不可达 → 显式报错，**不回退本地索引**。
   const kinds = resolveTypes(types)
   try {
@@ -520,7 +520,7 @@ async function contentSearch(
     })
     return { ok: true, items }
   } catch (err) {
-    return { ok: false, error: `dsh-reference-session 搜索面不可用（硬依赖）：${String(err instanceof Error ? err.message : err)}` }
+    return { ok: false, error: `dsh-reference-session-collector 搜索面不可用（硬依赖）：${String(err instanceof Error ? err.message : err)}` }
   }
 }
 
@@ -1252,7 +1252,7 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
     }
   }
 
-  // DRS 语料源（T7.1）：corpusSource='drs' 时索引语料改从 dsh-reference-session
+  // DRS 语料源（T7.1）：corpusSource='drs' 时索引语料改从 dsh-reference-session-collector
   // 投影库取（docs 直插引擎）；DRS 不可达时同步轮内部整轮回退原生
   // sessionQuery + 文件兜底。装配在 apply 期一次性成形——corpusSource 切换
   // 重启后生效（水位语义切换本就伴随一轮全量重灌）。Host 头回显首个

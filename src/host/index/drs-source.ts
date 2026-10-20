@@ -1,7 +1,7 @@
 /**
- * DRS 语料源:dsh-reference-session 投影库的 HTTP 只读客户端(T7.1)。
+ * DRS 语料源:dsh-reference-session-collector 投影库的 HTTP 只读客户端(T7.1)。
  *
- * 语料契约 = DRS 单条 fenced 路由 `GET /api/dsh-reference-session`:
+ * 语料契约 = DRS 单条 fenced 路由 `GET /api/dsh-reference-session-collector`:
  * - `op=sessions&offset=&limit=` → `{ok, total, rows:[sessions 行]}`(分页);
  * - `op=session&session=<id>&fields=search` → `{ok, session, rows:[检索臂]}`。
  *
@@ -16,8 +16,8 @@
  * 端可带 hostHeader 显式回显首个 trustedHosts 条目,规避「条目省略端口而
  * URL 带端口」的精确匹配失配;loopback + 无 trustedHosts 的老宿主天然放行。
  */
-/** DRS API 路径(与 dsh-reference-session 的 DRS_API_PATH 字面一致;不跨包 import)。 */
-export const DRS_API_PATH = '/api/dsh-reference-session'
+/** DRS API 路径(与 dsh-reference-session-collector 的 DRS_API_PATH 字面一致;不跨包 import)。 */
+export const DRS_API_PATH = '/api/dsh-reference-session-collector'
 
 /** 语料列表分页大小(百会话级一轮 1-2 页;DRS 侧 offset/limit 透传)。 */
 export const DRS_CORPUS_PAGE = 500

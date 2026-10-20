@@ -71,7 +71,7 @@ export interface SwitchSearchConfig {
   indexDir?: string
   /**
    * 语料源(T7.1):`'native'`=sessionQuery 服务 + 转录文件兜底(缺省);
-   * `'drs'`=dsh-reference-session 投影库(docs 直插;DRS 不可达时整轮
+   * `'drs'`=dsh-reference-session-collector 投影库(docs 直插;DRS 不可达时整轮
    * 回退 native 链路,水位语义切换的首轮会全量重灌一次)。
    */
   corpusSource?: 'native' | 'drs'
