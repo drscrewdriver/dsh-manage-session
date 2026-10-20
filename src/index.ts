@@ -804,6 +804,8 @@ function configSnapshotProjection(
       historyFiles: config.historyFiles,
       healthCheck: config.healthCheck,
       search: config.search,
+      // 老线卡回读面：漏字段 = 拨了显示不跟（写路 bridge schema 已在位）。
+      directDelete: config.directDelete,
     },
     [SWITCH_SEARCH_SETTINGS_NAMESPACE]: {
       enabled: config.enabled,
