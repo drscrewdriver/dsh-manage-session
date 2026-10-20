@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  extractSessionIdFromFiber, hasStewardDelete, resolveLabels, STEWARD_MENU_DELETE_ATTR,
+  extractSessionIdFromFiber, hasStewardDelete, hideSidebarRowsFor, resolveLabels, STEWARD_MENU_DELETE_ATTR,
 } from '../src/client/session-menu-legacy.ts'
 
 /** 造一个带 fiber 键的 treeitem 行对象（closest 返回自身）；跨用例共享引用。 */
@@ -66,5 +66,36 @@ describe('hasStewardDelete', () => {
     expect(hasStewardDelete({ querySelector: () => null })).toBe(false)
     expect(hasStewardDelete(null)).toBe(false)
     expect(hasStewardDelete({})).toBe(false)
+  })
+})
+
+describe('hideSidebarRowsFor', () => {
+  /** 造一个带 fiber node.id 的侧栏行（display 可写）。 */
+  function rowWith(id: string | undefined): { style: { display: string }; __reactFiber$a: unknown; closest: () => unknown } {
+    const leaf = { memoizedProps: id === undefined ? {} : { node: { id } }, return: null }
+    const row: { style: { display: string }; [k: string]: unknown } = { style: { display: '' }, __reactFiber$a: leaf }
+    row.closest = () => row
+    return row as never
+  }
+  function fakeDoc(rows: ReturnType<typeof rowWith>[]): Document {
+    return { querySelectorAll: () => rows } as unknown as Document
+  }
+  it('隐藏 id 匹配的行、返回条数；不匹配不动', () => {
+    const a = rowWith('session-1')
+    const b = rowWith('session-2')
+    const n = hideSidebarRowsFor(fakeDoc([a, b]), 'session-1')
+    expect(n).toBe(1)
+    expect(a.style.display).toBe('none')
+    expect(b.style.display).toBe('')
+  })
+  it('空 sessionId → 0 且不动任何行', () => {
+    const a = rowWith('session-1')
+    expect(hideSidebarRowsFor(fakeDoc([a]), '')).toBe(0)
+    expect(a.style.display).toBe('')
+  })
+  it('多行同 id 全隐', () => {
+    const a = rowWith('session-x')
+    const b = rowWith('session-x')
+    expect(hideSidebarRowsFor(fakeDoc([a, b]), 'session-x')).toBe(2)
   })
 })

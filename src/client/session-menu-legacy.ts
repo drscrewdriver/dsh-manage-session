@@ -78,6 +78,26 @@ export function hasStewardDelete(menuEl: { querySelector?: (s: string) => unknow
     && menuEl.querySelector(`[${STEWARD_MENU_DELETE_ATTR}]`) !== null
 }
 
+/**
+ * 隐藏侧栏中属于该 sessionId 的会话行（老线文件路 purge 后补位）。
+ * 背景：≤0.1.5 无 registry.deleteSession，purgeHistory 只动磁盘（归档+删目录）
+ * 与 steward 索引，不通知宿主内存 workspaceRegistry → 侧栏行滞留到重启。
+ * 本函数扫 `[role=treeitem]` 行、用 fiber 取 node.id 匹配、置 display:none（不
+ * removeChild，避开与 React 协调冲突；行无 style.display prop，重渲染不覆盖）。
+ * 返回隐藏行数（现代线行已被 deleteSession 真删，此处通常 0，无害）。
+ */
+export function hideSidebarRowsFor(doc: Document, sessionId: string): number {
+  if (sessionId === '') return 0
+  let n = 0
+  for (const row of Array.from(doc.querySelectorAll('[role="treeitem"]'))) {
+    if (extractSessionIdFromFiber(row) === sessionId) {
+      ;(row as HTMLElement).style.display = 'none'
+      n += 1
+    }
+  }
+  return n
+}
+
 /** 注入器依赖（浏览器装配；单测只覆盖上面的纯叶）。 */
 export interface LegacyMenuInjectDeps {
   doc: Document
@@ -140,7 +160,8 @@ export function installLegacySessionMenuDelete(deps: LegacyMenuInjectDeps): () =
     row.addEventListener('click', (e) => {
       e.stopPropagation()
       if (!armed) { armed = true; paint(); return }
-      void deps.purge(sessionId).then(closeMenu, () => { closeMenu() })
+      // 成功：先隐藏侧栏滞留行（老线文件路不通知宿主 registry），再关菜单。
+      void deps.purge(sessionId).then(() => { hideSidebarRowsFor(doc, sessionId); closeMenu() }, () => { closeMenu() })
     })
     menuEl.appendChild(row)
     anchored.add(menuEl)
