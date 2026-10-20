@@ -481,6 +481,12 @@ interface StewardConfig {
   healthCheck?: boolean;
   /** 搜索索引子域（`index-*` 路由与侧栏搜索入口）。关闭后索引子域整体停摆。 */
   search?: boolean;
+  /**
+   * 直接删除入口（2026-10-20 用户定标）：开启后搜索面板结果行出现行内
+   * 「删除」按钮（两步确认,走管理端同款 session-history-purge 链路）。
+   * **缺省关**——破坏性入口不默认铺开;管理端批量删除不受本开关限制。
+   */
+  directDelete?: boolean;
 }
 /** 缺省值。 */
 declare const DEFAULT_CONFIG: Required<StewardConfig>;
@@ -1482,6 +1488,8 @@ declare class DrsCorpusSource {
     to?: number;
     sortBy?: 'relevance' | 'time';
     limit?: number;
+    /** 命中展开（wire `expand=1`）：同会话多命中各自成行；缺省聚合。 */
+    expand?: boolean;
     /** 同源 Host 覆盖（转发调用方请求头；优先于装配 baseUrl）。 */
     atHost?: string;
   }): Promise<{
@@ -2158,6 +2166,7 @@ declare const Config: z<Schemastery.ObjectS<NoInfer<{
   historyFiles: z<boolean, boolean, "defined">;
   healthCheck: z<boolean, boolean, "defined">;
   search: z<boolean, boolean, "defined">;
+  directDelete: z<boolean, boolean, "defined">;
   defaultMode: z<"title" | "content", "title" | "content", "defined">;
   autoSync: z<boolean, boolean, "defined">;
   syncIntervalMs: z<number, number, "defined">;
@@ -2170,6 +2179,7 @@ declare const Config: z<Schemastery.ObjectS<NoInfer<{
   historyFiles: z<boolean, boolean, "defined">;
   healthCheck: z<boolean, boolean, "defined">;
   search: z<boolean, boolean, "defined">;
+  directDelete: z<boolean, boolean, "defined">;
   defaultMode: z<"title" | "content", "title" | "content", "defined">;
   autoSync: z<boolean, boolean, "defined">;
   syncIntervalMs: z<number, number, "defined">;
@@ -2214,6 +2224,11 @@ interface StewardRuntime {
     /** 清理成功（物理删除）→ 索引行整个移除。 */
     onPurged: (sessionIds: readonly string[]) => void;
   };
+  /**
+   * 退场墓碑台账目录（可选）：purge 成功后追加 retired-tombstones.jsonl。
+   * 缺省 = ~/.dsh-switch-search（单测注入临时目录隔离真实家目录）。
+   */
+  tombstoneDir?: () => string;
 }
 /**
  * 支持的路由方法（按子域分组；用于对外声明与测试断言）。
