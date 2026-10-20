@@ -15,7 +15,7 @@ import type { SwitchSearchConfig } from '../../config.ts'
 // 0.1.7：插件族共用设置节（dsh-thinking-levels 持有并声明 `dsh-family.tab`
 // 子席位；本仓不依赖 ui-slots 类型包，席位键以运行时 children 表为准）。
 import { locateSearchHit } from './locate.ts'
-import { callHost, callHostAny, type HostContentHit, type HostIndexStatus, type HostSessionItem, type HostSortMode, type SwitchSessionsService, type SwitchUiWorkspaceService } from './host-api.ts'
+import { callHost, callHostAny, callSteward, type HostContentHit, type HostIndexStatus, type HostSessionItem, type HostSortMode, type SwitchSessionsService, type SwitchUiWorkspaceService } from './host-api.ts'
 import type { SwitchCardScope } from './card.tsx'
 import { translate, type LocaleKey } from './locales.ts'
 import { LABELS, isInvokeChord } from './platform.ts'
@@ -260,6 +260,12 @@ const CSS = `
 .dsws_list{flex:1 1 auto;min-height:0;overflow-y:auto;margin:8px 0 0;padding:0 6px 8px;list-style:none}
 .dsws_row{box-sizing:border-box;border-radius:8px;width:100%;padding:7px 8px;cursor:pointer;text-align:left;border:none;background:transparent;color:var(--dsw-alias-label-primary);display:flex;flex-direction:column;gap:2px;min-width:0}
 .dsws_row:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dsws_rowLine{display:flex;align-items:stretch;gap:4px}
+.dsws_rowLine>.dsws_row{flex:1 1 auto;width:auto;min-width:0}
+.dsws_delBtn{flex:none;align-self:center;height:24px;box-sizing:border-box;border:1px solid var(--dsw-alias-state-error-primary);background:transparent;color:var(--dsw-alias-state-error-primary);border-radius:999px;padding:0 10px;font-size:12px;line-height:22px;cursor:pointer;white-space:nowrap}
+.dsws_delBtn:hover{background:var(--dsw-alias-state-error-primary);color:#fff}
+.dsws_delBtnArm{background:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);color:#fff;font-weight:600}
+.dsws_delBtn:disabled{opacity:.5;cursor:default}
 .dsws_rowTitle{display:flex;align-items:center;gap:8px;min-width:0}
 .dsws_titleText{flex:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;line-height:18px}
 .dsws_tag{flex:none;color:var(--dsw-alias-label-caption);font-size:11px;line-height:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -361,6 +367,12 @@ function SwitchPanel({
   const [dateTo, setDateTo] = useState('')
   // 定位诊断徽标（T7.4 v3）：点过命中行的定位态 ⏳/✓/✗——「停在底部」不再靠猜。
   const [locateStatus, setLocateStatus] = useState<Record<string, 'pending' | 'ok' | 'fail'>>({})
+  // 直接删除入口（功能①）：开关由 index-status 探针下发（管家
+  // session-steward.directDelete，缺省关）；armed=待二次确认的会话 id。
+  const [directDelete, setDirectDelete] = useState(false)
+  const [armedDelete, setArmedDelete] = useState<string | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteNote, setDeleteNote] = useState<{ text: string; failed: boolean } | null>(null)
   const [sortBy, setSortByState] = useState<HostSortMode>(readStoredSort)
   const setSortBy = (next: HostSortMode): void => {
     writeStoredSort(next)
@@ -409,6 +421,7 @@ function SwitchPanel({
         }
         const status = res as HostIndexStatus
         const rebuilding = status.rebuild?.state === 'building' || status.rebuild?.state === 'swapping'
+        setDirectDelete(status.directDelete === true)
         setSearchStatus({
           available: status.available ?? false,
           reason: status.reason,
@@ -431,6 +444,41 @@ function SwitchPanel({
     setSearchStatus(prev => ({ ...prev, rebuilding: true }))
     void callHostAny<HostIndexStatus>('index-rebuild', {})
   }
+
+  /**
+   * 真删一个会话（功能①）：走管理端同款 session-history-purge 链路（内存
+   * 全痕删除优先，宿主成功后落墓碑台账）；成功只把该会话从两侧结果面
+   * 摸掉——不刷语料、不关面板（失败要能原地重试）。
+   */
+  const purgeSession = (sessionId: string): void => {
+    setArmedDelete(null)
+    setDeleteBusy(true)
+    setDeleteNote(null)
+    void callSteward<{ purged?: number }>('session-history-purge', { sessionIds: [sessionId] })
+      .then((res) => {
+        if (res.ok) {
+          setSessions(prev => (prev === null ? prev : prev.filter(it => it.sessionId !== sessionId)))
+          setContent(prev => ({ ...prev, items: prev.items.filter(it => it.sessionId !== sessionId) }))
+          setDeleteNote({ text: translate(t, 'panel.delete.done', { n: res.purged ?? 1 }), failed: false })
+        } else {
+          setDeleteNote({ text: translate(t, 'panel.delete.failed', { error: res.error ?? '?' }), failed: true })
+        }
+      })
+      .finally(() => { setDeleteBusy(false) })
+  }
+
+  /** 行内删除按钮（仅 directDelete 开启时参与渲染）：两步确认，第一击上弦。 */
+  const deleteBtn = (sessionId: string): ReactElement => createElement('button', {
+    key: 'del',
+    type: 'button',
+    className: `dsws_delBtn${armedDelete === sessionId ? ' dsws_delBtnArm' : ''}`,
+    title: translate(t, 'panel.delete.hint'),
+    disabled: deleteBusy,
+    onClick: () => {
+      if (armedDelete === sessionId) purgeSession(sessionId)
+      else setArmedDelete(sessionId)
+    },
+  }, armedDelete === sessionId ? translate(t, 'panel.delete.confirm') : translate(t, 'panel.delete'))
 
   // Load the title-search corpus once on open.
   useEffect(() => {
@@ -524,6 +572,9 @@ function SwitchPanel({
   }, [sessions, normalized, archivedFilter, dateRangeMs])
 
   const children: ReactElement[] = []
+  if (deleteNote !== null) {
+    children.push(createElement('div', { key: 'delnote', className: deleteNote.failed ? 'dsws_error' : 'dsws_status' }, deleteNote.text))
+  }
   if (sessionsError !== null) {
     children.push(createElement('div', { key: 'err', className: 'dsws_error' }, translate(t, 'panel.sessionsError', { error: sessionsError })))
   }
@@ -541,17 +592,21 @@ function SwitchPanel({
         className: 'dsws_list',
         role: 'listbox',
         'aria-label': translate(t, 'panel.titleSearch'),
-      }, titleRows.slice(0, 200).map(item => createElement('li', { key: item.sessionId, role: 'option' }, createElement('button', {
-        type: 'button',
-        className: 'dsws_row',
-        onClick: () => { open(item.sessionId) },
-      }, [
-        createElement('span', { key: 't', className: 'dsws_rowTitle' }, [
-          createElement('span', { key: 'x', className: 'dsws_titleText' }, item.title || translate(t, 'panel.untitled')),
-          item.archived === true && createElement('span', { key: 'arch', className: 'dsws_tagArch' }, translate(t, 'tag.archived')),
-          createElement('span', { key: 'tag', className: 'dsws_tag' }, fmtTime(item.updatedAt)),
+      }, titleRows.slice(0, 200).map(item => createElement('li', { key: item.sessionId, role: 'option' }, createElement('div', { className: 'dsws_rowLine' }, [
+        createElement('button', {
+          key: 'row',
+          type: 'button',
+          className: 'dsws_row',
+          onClick: () => { setArmedDelete(null); open(item.sessionId) },
+        }, [
+          createElement('span', { key: 't', className: 'dsws_rowTitle' }, [
+            createElement('span', { key: 'x', className: 'dsws_titleText' }, item.title || translate(t, 'panel.untitled')),
+            item.archived === true && createElement('span', { key: 'arch', className: 'dsws_tagArch' }, translate(t, 'tag.archived')),
+            createElement('span', { key: 'tag', className: 'dsws_tag' }, fmtTime(item.updatedAt)),
+          ]),
+          item.cwd !== '' && createElement('span', { key: 'c', className: 'dsws_meta' }, item.cwd),
         ]),
-        item.cwd !== '' && createElement('span', { key: 'c', className: 'dsws_meta' }, item.cwd),
+        directDelete && deleteBtn(item.sessionId),
       ])))))
     }
   } else {
@@ -597,37 +652,42 @@ function SwitchPanel({
         className: 'dsws_list',
         role: 'listbox',
         'aria-label': translate(t, 'panel.contentSearch'),
-      }, activeContent.items.slice(0, 200).map(item => createElement('li', { key: `${item.sessionId}:${item.seq}`, role: 'option' }, createElement('button', {
-        type: 'button',
-        className: 'dsws_row',
-        // B 路线定位臂（T7.4）：先开会话，再异步把命中行滚进视口高亮；
-        // 定位失败静默——行为与接臂前逐行一致（仅打开）。展开态下同会话
-        // 多行各自成行，行键/定位态键都降到 (sessionId,seq) 粒度。
-        onClick: () => {
-          const hitKey = `${item.sessionId}:${item.seq}`
-          open(item.sessionId)
-          setLocateStatus(s => ({ ...s, [hitKey]: 'pending' }))
-          void locateSearchHit(item).then(ok => {
-            setLocateStatus(s => ({ ...s, [hitKey]: ok ? 'ok' : 'fail' }))
-          })
-        },
-      }, [
-        createElement('span', { key: 't', className: 'dsws_rowTitle' }, [
-          createElement('span', { key: 'x', className: 'dsws_titleText' }, item.title || translate(t, 'panel.untitled')),
-          createElement('span', { key: 'tag', className: 'dsws_tag' }, typeLabel(t, item.type)),
-          // The session clock — the very field the 「时间」 ordering sorts by and
-          // the one the title rows already show. Ordering rows by a time the
-          // rows never display is illegible: you cannot tell what the sort did.
-          // 展开态例外：同会话各行 updatedAt 相同，改显命中行自己的 time。
-          createElement('span', { key: 'time', className: 'dsws_tag' }, fmtTime(groupMode === 'expand' ? item.time : item.updatedAt)),
-          ...(locateStatus[`${item.sessionId}:${item.seq}`] === undefined ? [] : [createElement('span', {
-            key: 'loc', className: 'dsws_tag',
-            title: locateStatus[`${item.sessionId}:${item.seq}`] === 'pending' ? '定位巡逻中'
-              : locateStatus[`${item.sessionId}:${item.seq}`] === 'ok' ? '已跳转到命中行'
-                : '未能定位（行未渲染/文本被拆分/超时）',
-          }, locateStatus[`${item.sessionId}:${item.seq}`] === 'pending' ? '⏳' : locateStatus[`${item.sessionId}:${item.seq}`] === 'ok' ? '✓' : '✗')]),
+      }, activeContent.items.slice(0, 200).map(item => createElement('li', { key: `${item.sessionId}:${item.seq}`, role: 'option' }, createElement('div', { className: 'dsws_rowLine' }, [
+        createElement('button', {
+          key: 'row',
+          type: 'button',
+          className: 'dsws_row',
+          // B 路线定位臂（T7.4）：先开会话，再异步把命中行滚进视口高亮；
+          // 定位失败静默——行为与接臂前逐行一致（仅打开）。展开态下同会话
+          // 多行各自成行，行键/定位态键都降到 (sessionId,seq) 粒度。
+          onClick: () => {
+            const hitKey = `${item.sessionId}:${item.seq}`
+            setArmedDelete(null)
+            open(item.sessionId)
+            setLocateStatus(s => ({ ...s, [hitKey]: 'pending' }))
+            void locateSearchHit(item).then(ok => {
+              setLocateStatus(s => ({ ...s, [hitKey]: ok ? 'ok' : 'fail' }))
+            })
+          },
+        }, [
+          createElement('span', { key: 't', className: 'dsws_rowTitle' }, [
+            createElement('span', { key: 'x', className: 'dsws_titleText' }, item.title || translate(t, 'panel.untitled')),
+            createElement('span', { key: 'tag', className: 'dsws_tag' }, typeLabel(t, item.type)),
+            // The session clock — the very field the 「时间」 ordering sorts by and
+            // the one the title rows already show. Ordering rows by a time the
+            // rows never display is illegible: you cannot tell what the sort did.
+            // 展开态例外：同会话各行 updatedAt 相同，改显命中行自己的 time。
+            createElement('span', { key: 'time', className: 'dsws_tag' }, fmtTime(groupMode === 'expand' ? item.time : item.updatedAt)),
+            ...(locateStatus[`${item.sessionId}:${item.seq}`] === undefined ? [] : [createElement('span', {
+              key: 'loc', className: 'dsws_tag',
+              title: locateStatus[`${item.sessionId}:${item.seq}`] === 'pending' ? '定位巡逻中'
+                : locateStatus[`${item.sessionId}:${item.seq}`] === 'ok' ? '已跳转到命中行'
+                  : '未能定位（行未渲染/文本被拆分/超时）',
+            }, locateStatus[`${item.sessionId}:${item.seq}`] === 'pending' ? '⏳' : locateStatus[`${item.sessionId}:${item.seq}`] === 'ok' ? '✓' : '✗')]),
+          ]),
+          createElement('span', { key: 's', className: 'dsws_snippet' }, item.snippet || translate(t, 'panel.noText')),
         ]),
-        createElement('span', { key: 's', className: 'dsws_snippet' }, item.snippet || translate(t, 'panel.noText')),
+        directDelete && deleteBtn(item.sessionId),
       ])))))
     }
   }

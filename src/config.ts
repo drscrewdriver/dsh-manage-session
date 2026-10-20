@@ -21,6 +21,12 @@ export interface StewardConfig {
   healthCheck?: boolean
   /** 搜索索引子域（`index-*` 路由与侧栏搜索入口）。关闭后索引子域整体停摆。 */
   search?: boolean
+  /**
+   * 直接删除入口（2026-10-20 用户定标）：开启后搜索面板结果行出现行内
+   * 「删除」按钮（两步确认,走管理端同款 session-history-purge 链路）。
+   * **缺省关**——破坏性入口不默认铺开;管理端批量删除不受本开关限制。
+   */
+  directDelete?: boolean
 }
 
 /** 缺省值。 */
@@ -29,6 +35,7 @@ export const DEFAULT_CONFIG: Required<StewardConfig> = {
   historyFiles: true,
   healthCheck: true,
   search: true,
+  directDelete: false,
 }
 
 /** host 半身注册的设置命名空间（与 src/index.ts 保持一致）。 */

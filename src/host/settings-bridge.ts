@@ -46,6 +46,7 @@ const StewardNsSchema = z.object({
   historyFiles: z.boolean().default(true),
   healthCheck: z.boolean().default(true),
   search: z.boolean().default(true),
+  directDelete: z.boolean().default(false),
 })
 
 /** 搜索命名空间 schema（同上；存储键与 config.ts 承诺一致）。 */
@@ -135,6 +136,7 @@ const FIELD_VALIDATORS: Record<string, Record<string, (v: unknown) => FieldVerdi
     historyFiles: asBoolean,
     healthCheck: asBoolean,
     search: asBoolean,
+    directDelete: asBoolean,
   },
   [SWITCH_SEARCH_SETTINGS_NAMESPACE]: {
     enabled: asBoolean,

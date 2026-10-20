@@ -122,6 +122,11 @@ export interface HostIndexStatus {
    * older host half — treated as `unknown`, which renders the neutral hint.
    */
   steward?: 'installed' | 'missing' | 'unknown'
+  /**
+   * 直接删除入口开关（功能①，管家 session-steward.directDelete）：true 时
+   * 面板结果行渲染行内删除按钮。旧宿主半无此字段 = undefined = 不渲染。
+   */
+  directDelete?: boolean
   sync?: HostSyncState
   rebuild?: HostRebuildState
   error?: string

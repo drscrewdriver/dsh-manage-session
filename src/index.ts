@@ -36,6 +36,7 @@ import { archiveHistory, listHistory, pruneHistory, storagePathsFor } from './ho
 import { listFavorites, setFavoriteState } from './host/history/favorites.ts'
 import type { StewardRegistryFace } from './host/history/archive-source.ts'
 import { locateSessionUsage, purgeHistory } from './host/history/purge.ts'
+import { appendRetiredTombstones, defaultTombstoneDir } from './host/history/tombstones.ts'
 import {
   installLegacySettingsBridge,
   settingsDescribe,
@@ -159,6 +160,7 @@ export const Config = z.object({
   historyFiles: withVolatile(z.boolean().default(true)),
   healthCheck: withVolatile(z.boolean().default(true)),
   search: withVolatile(z.boolean().default(true)),
+  directDelete: withVolatile(z.boolean().default(false)),
   defaultMode: withVolatile(z.union(['title', 'content']).default('title')),
   autoSync: withVolatile(z.boolean().default(true)),
   syncIntervalMs: withVolatile(z.number().default(30_000)),
@@ -310,6 +312,11 @@ export interface StewardRuntime {
     /** 清理成功（物理删除）→ 索引行整个移除。 */
     onPurged: (sessionIds: readonly string[]) => void
   }
+  /**
+   * 退场墓碑台账目录（可选）：purge 成功后追加 retired-tombstones.jsonl。
+   * 缺省 = ~/.dsh-switch-search（单测注入临时目录隔离真实家目录）。
+   */
+  tombstoneDir?: () => string
 }
 
 /**
@@ -561,6 +568,8 @@ async function indexStatus(srt: SearchRuntime): Promise<unknown> {
     driver: index.engine.driverLabel,
     archive: index.archiveReader.diagnostics() as SwitchArchiveDiagnostics,
     dir: index.layout.dir,
+    // 直接删除入口开关（功能①）：搜索面板据此渲染行内删除按钮；缺省关。
+    directDelete: srt.config().directDelete === true,
     archives: await listArchives(index.layout).catch(() => []),
     sync: { ...sync, indexed } satisfies SwitchSyncState,
     rebuild: index.rebuild,
@@ -914,6 +923,12 @@ export async function handleMethod(
         }
       }
       runtime.index?.onPurged(succeeded)
+      // 墓碑台账（功能②前置）：只对成功退场的 id 落账；写失败不影响删除结果。
+      appendRetiredTombstones(succeeded, {
+        ...(runtime.tombstoneDir === undefined ? {} : { dir: runtime.tombstoneDir() }),
+        source: 'steward-purge-memory',
+        log: runtime.log,
+      })
       return {
         ok: true,
         purged: succeeded.length,
@@ -929,7 +944,13 @@ export async function handleMethod(
     // 联动只在真删成功后：失败条目留在索引里（还能搜到,如实）。
     if (result.ok && ids !== undefined) {
       const failed = new Set((result.failures ?? []).map(f => f.sessionId))
-      runtime.index?.onPurged(ids.filter((id) => !failed.has(id)))
+      const gone = ids.filter((id) => !failed.has(id))
+      runtime.index?.onPurged(gone)
+      appendRetiredTombstones(gone, {
+        ...(runtime.tombstoneDir === undefined ? {} : { dir: runtime.tombstoneDir() }),
+        source: 'steward-purge-fallback',
+        log: runtime.log,
+      })
     }
     return result
   }
@@ -1113,6 +1134,7 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
     historyFiles: readVolatileValue(config.historyFiles) ?? DEFAULT_CONFIG.historyFiles,
     healthCheck: readVolatileValue(config.healthCheck) ?? DEFAULT_CONFIG.healthCheck,
     search: readVolatileValue(config.search) ?? DEFAULT_CONFIG.search,
+    directDelete: readVolatileValue(config.directDelete) ?? DEFAULT_CONFIG.directDelete,
     defaultMode: readVolatileValue(config.defaultMode) ?? SWITCH_DEFAULT_CONFIG.defaultMode,
     autoSync: readVolatileValue(config.autoSync) ?? SWITCH_DEFAULT_CONFIG.autoSync,
     syncIntervalMs: readVolatileValue(config.syncIntervalMs) ?? SWITCH_DEFAULT_CONFIG.syncIntervalMs,
@@ -1200,6 +1222,11 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
         if (!engine.isOpen) return
         try { for (const id of ids) engine.removeSession(id) } catch (err) { log(`index onPurged failed: ${String(err instanceof Error ? err.message : err)}`) }
       },
+    },
+    // 墓碑台账随索引目录（indexDir 自定义时同源，否则 ~/.dsh-switch-search）。
+    tombstoneDir: () => {
+      const dir = current().indexDir
+      return dir !== '' ? dir : defaultTombstoneDir()
     },
   }
 

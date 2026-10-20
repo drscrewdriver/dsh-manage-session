@@ -129,6 +129,18 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
           onChange: (checked) => { void scope.set('healthCheck', checked) },
         }),
       }),
+      // 直接删除入口（功能①，2026-10-20 用户定标）：缺省关——破坏性入口
+      // 不默认铺开；开启后搜索面板行内出删除按钮（同款两步确认）。
+      createElement(Row, {
+        key: 'directDelete',
+        title: translate(t, 'card.directDelete'),
+        desc: translate(t, 'card.directDelete.desc'),
+        control: createElement(Toggle, {
+          checked: value.directDelete ?? DEFAULT_CONFIG.directDelete,
+          disabled: !writable,
+          onChange: (checked) => { void scope.set('directDelete', checked) },
+        }),
+      }),
     )
     if (!writable) rows.push(createElement('div', { key: 'ro', className: 'dss_setDesc' }, translate(t, 'card.readonly')))
   }

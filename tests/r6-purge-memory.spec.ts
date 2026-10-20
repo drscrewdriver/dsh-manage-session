@@ -58,9 +58,12 @@ describe('日期筛选（engine SQL 半开区间）', () => {
 describe('purge 内存路径（registry.deleteSession,免重启）', () => {
   it('逐 id 调 deleteSession,requiresRestart=false,索引联动只含成功 id', async () => {
     const deleted: string[] = []
+    const tombDir = mkdtempSync(join(tmpdir(), 'r6-tomb-'))
     const runtime: StewardRuntime = {
-      config: () => ({ enabled: true, historyFiles: true, healthCheck: true, search: true }),
+      config: () => ({ enabled: true, historyFiles: true, healthCheck: true, search: true, directDelete: false }),
       dshHome: join(tmpdir(), 'purge-mem'),
+      // 墓碑台账隔离到临时目录：缺省会回退真实 ~/.dsh-switch-search（测试污染）。
+      tombstoneDir: () => tombDir,
       registry: () => ({
         archivedSessionIds: [],
         deleteSession: async (id: string) => {
