@@ -35,6 +35,8 @@ function injectManageStyles(): () => void {
 .dsws_batchBar{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-top:1px solid var(--dsw-alias-border-l1)}
 .dsws_batchInfo{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
 .dsws_btnDanger{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}
+.dsws_btnDangerSolid{background:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);color:#fff;font-weight:600}
+.dsws_btnDangerSolid:hover{background:var(--dsw-alias-state-error-primary);filter:brightness(1.08);color:#fff}
 .dsws_manageHint{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;padding:8px 10px 0}
 .dsws_chips{display:flex;align-items:center;gap:6px;padding:8px 10px 0;flex:none;flex-wrap:wrap}
 .dsws_chip{height:24px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;border-radius:999px;padding:0 10px;font-size:12px;font-weight:500;line-height:22px;white-space:nowrap}
@@ -370,8 +372,10 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
         onClick: () => { runBatch('unarchive') },
       }, translate(t, 'manage.batch.unarchive')),
       createElement('button', {
-        key: 'purge', type: 'button', className: `dsws_actBtn dsws_btnDanger`, disabled: batch.busy,
-        style: confirmPurge ? { background: 'var(--dsw-alias-state-error-primary)', color: 'var(--dsw-specific-tip)' } : undefined,
+        key: 'purge', type: 'button',
+        // 两步确认的第二步：红底白字实心（对齐宿主原生危险按钮，用户定标
+        // 2026-10-20）——白字不赌主题令牌（tip 色在亮色主题下对比度不足）。
+        className: `dsws_actBtn${confirmPurge ? ' dsws_btnDangerSolid' : ' dsws_btnDanger'}`, disabled: batch.busy,
         onClick: () => { runBatch('purge') },
       }, confirmPurge ? translate(t, 'manage.batch.confirm') : translate(t, 'manage.batch.delete')),
       batch.busy && createElement('span', { key: 'busy', className: 'dsws_batchInfo' }, translate(t, 'manage.batch.working')),
