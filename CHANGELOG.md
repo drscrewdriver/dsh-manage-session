@@ -1,5 +1,7 @@
 # Changelog
 
+0.5.7: host enumeration addendum for DSH 0.2.1-rc.3 (declaration-only bump; contract plane zero diff).
+
 ## 0.5.5 (2026-10-19)
 
 ### 修复 —— issue #1：hollow 会话增量同步永不补录
