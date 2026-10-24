@@ -26,7 +26,7 @@ export const supportedHosts = Object.freeze([
 ])
 
 /** 开发/类型检查所钉的宿主版本（devDependencies 只钉它）。 */
-export const developmentHost = '0.2.1-rc.1'
+export const developmentHost = '0.2.1-rc.3'
 
 /**
  * 声明为枚举 peer 的 `@deepseek-ai/dsh-*` 包（版本随宿主逐 rc 联动）。
