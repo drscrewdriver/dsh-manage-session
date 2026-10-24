@@ -1,10 +1,10 @@
 /**
- * dsh-manage-sessions 的共享配置面（会话管理器：归档 + 体检）。
+ * dsh-manage-session 的共享配置面（会话管理器：归档 + 体检）。
  *
  * 与 host 半身（schemastery schema 在 src/index.ts）以及浏览器半身共用同一形状，
  * 使一处 admitted 的值在另一处也 admitted。
  *
- * 设置命名空间只有一个：`manage-sessions`（enabled/historyFiles/healthCheck/directDelete）。
+ * 设置命名空间只有一个：`manage-session`（enabled/historyFiles/healthCheck/directDelete）。
  * 搜索/索引子域已拆回 dsh-search-index，本包不再持有 `search` 开关、索引目录、
  * 语料源（DRS）等字段——DRS 依赖也随搜索一起迁回那边。
  */
@@ -34,10 +34,10 @@ export const DEFAULT_CONFIG: Required<StewardConfig> = {
 }
 
 /** host 半身注册的设置命名空间（与 src/index.ts 保持一致）。 */
-export const STEWARD_SETTINGS_NAMESPACE = 'manage-sessions'
+export const STEWARD_SETTINGS_NAMESPACE = 'manage-session'
 
 /** 侧边栏入口 id（客户端注册 id）。 */
-export const STEWARD_ENTRY_ID = 'dsh-manage-sessions'
+export const STEWARD_ENTRY_ID = 'dsh-manage-session'
 
 /** host 路由前缀（管理 + 体检，方法名一律 `session-*`）。 */
-export const STEWARD_API_PREFIX = '/manage-sessions/api'
+export const STEWARD_API_PREFIX = '/manage-session/api'

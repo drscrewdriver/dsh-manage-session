@@ -4,14 +4,14 @@
  *
  * What it proves (and what it does NOT):
  * - `lib/client.js` materializes without any release-specific specifier，工厂 id
- *   为包名 `dsh-manage-sessions`（ModuleLoader 组合键 = 包名）。
+ *   为包名 `dsh-manage-session`（ModuleLoader 组合键 = 包名）。
  * - 恰好一枚 sidebar.footer.action 入口（会话管理，order 6，id = 包名）；一张 dsh-family.tab 设置卡；
  *   一张 key=包名的 plugins.bundle.config 复合卡；不占用 settings.* 席位
  *   （家族节兜底 host 走 2600ms 宽限期，本夹具无 entries 面必然落败——按设计）。
  * - 入口位次：宿主同时声明 `sidebar.panellist` + `main` 时改注册两行面板 + 两个主栏页
- *   （id/key = manage-sessions-search / manage-sessions，order 5/6），底栏入口不出现；
+ *   （id/key = manage-session-search / manage-session，order 5/6），底栏入口不出现；
  *   只声明其一 → 回落底栏。
- * - scope 绑定：configForms 以 entry id `dsh-manage-sessions` 取句柄；缺失时
+ * - scope 绑定：configForms 以 entry id `dsh-manage-session` 取句柄；缺失时
  *   回退 webServer 设置桥 scope（settings-describe/mutate，T20-b）——settingsScope
  *   bind 是数据死路（台账 A2），不再绑定任何命名空间。
  * - It does NOT render React, and it does NOT prove GUI behaviour.
@@ -26,10 +26,10 @@ import { runInNewContext } from 'node:vm'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const BUNDLE = join(HERE, '..', 'lib', 'client.js')
-const PLUGIN_ID = 'dsh-manage-sessions'
-const STEWARD_ENTRY_ID = 'dsh-manage-sessions'
-const STEWARD_NS = 'manage-sessions'
-const SEARCH_NS = 'manage-sessions-search'
+const PLUGIN_ID = 'dsh-manage-session'
+const STEWARD_ENTRY_ID = 'dsh-manage-session'
+const STEWARD_NS = 'manage-session'
+const SEARCH_NS = 'manage-session-search'
 
 /** Module table the web shell seeds in both target releases (react family only here). */
 const TABLE = {
@@ -181,7 +181,7 @@ const check = (name, fn) => {
   checks.push([name, fn])
 }
 
-line('=== dsh-manage-sessions merged client registrations ===')
+line('=== dsh-manage-session merged client registrations ===')
 
 const { exports, seen } = loadBundle()
 check('bundle materializes with only baseline specifiers', () => {
@@ -202,7 +202,7 @@ check('registers exactly ONE sidebar footer entry (the manager)', () => {
 /** 0.2.x 宿主：顶栏工具行席位（面板行 + 主栏整页）齐备。 */
 const HOST_TOP_TOOL_SEATS = [...HOST_012_SEATS, 'sidebar.panellist', 'main']
 /** 面板行 id / 主栏页 key（与底栏入口 id 分属两套命名空间）。 */
-const TOP_MANAGER_ID = 'manage-sessions'
+const TOP_MANAGER_ID = 'manage-session'
 
 check('top tool seat present: one panel row (order 6) + one main page, NO footer entry', () => {
   const ledger = []

@@ -20,7 +20,7 @@ import { TRASH_ICON_SVG } from './session-menu-legacy.ts'
 /** 宿主菜单席位名（0.1.7+ 存在）。 */
 export const SESSION_MENU_SEAT = 'sidebar.workspaces.session.menu.item'
 /** 本行注册 id（包名空间，避免遮蔽宿主行）。 */
-export const SESSION_MENU_DELETE_ID = 'dsh-manage-sessions.delete'
+export const SESSION_MENU_DELETE_ID = 'dsh-manage-session.delete'
 /** 落位序：宿主末行 session-id(450) 之后。 */
 export const SESSION_MENU_DELETE_ORDER = 500
 

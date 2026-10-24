@@ -48,8 +48,8 @@ describe('bridge scope（客户端半）', () => {
         writable: true,
         revision: 4,
         namespaces: {
-          'manage-sessions': { enabled: false, historyFiles: true, healthCheck: true, search: true },
-          'manage-sessions-search': { enabled: true, defaultMode: 'content', autoSync: true, syncIntervalMs: 30_000, archiveKeep: 2, indexDir: '' },
+          'manage-session': { enabled: false, historyFiles: true, healthCheck: true, search: true },
+          'manage-session-search': { enabled: true, defaultMode: 'content', autoSync: true, syncIntervalMs: 30_000, archiveKeep: 2, indexDir: '' },
         },
       },
     }])
@@ -77,8 +77,8 @@ describe('bridge scope（客户端半）', () => {
           writable: true,
           revision: 1,
           namespaces: {
-            'manage-sessions': { enabled: true, historyFiles: true, healthCheck: true, search: true },
-            'manage-sessions-search': {},
+            'manage-session': { enabled: true, historyFiles: true, healthCheck: true, search: true },
+            'manage-session-search': {},
           },
         },
       },
@@ -87,8 +87,8 @@ describe('bridge scope（客户端半）', () => {
           ok: true,
           revision: 2,
           namespaces: {
-            'manage-sessions': { enabled: false, historyFiles: true, healthCheck: true, search: true },
-            'manage-sessions-search': {},
+            'manage-session': { enabled: false, historyFiles: true, healthCheck: true, search: true },
+            'manage-session-search': {},
           },
         },
       },
@@ -102,8 +102,8 @@ describe('bridge scope（客户端半）', () => {
     })
     expect(scope.getSnapshot().value?.enabled).toBe(true)
     await scope.set('enabled', false)
-    expect(calls[1]?.url).toBe('/manage-sessions/api/settings-mutate')
-    expect(calls[1]?.body).toMatchObject({ ns: 'manage-sessions', fields: { enabled: false } })
+    expect(calls[1]?.url).toBe('/manage-session/api/settings-mutate')
+    expect(calls[1]?.body).toMatchObject({ ns: 'manage-session', fields: { enabled: false } })
     expect(scope.getSnapshot().value?.enabled).toBe(false)
     expect(scope.getSnapshot().revision).toBe(2)
   })
@@ -117,8 +117,8 @@ describe('bridge scope（客户端半）', () => {
           writable: true,
           revision: 1,
           namespaces: {
-            'manage-sessions': { enabled: true, historyFiles: true, healthCheck: true, search: true },
-            'manage-sessions-search': {},
+            'manage-session': { enabled: true, historyFiles: true, healthCheck: true, search: true },
+            'manage-session-search': {},
           },
         },
       },

@@ -7,11 +7,11 @@
 
 ### 정체성과 이름
 
-- 패키지명 / 플러그인 id: `dsh-session-steward` → `dsh-manage-sessions`. 표시 이름: 세션 관리(9개 언어 동기화).
-- 설정 네임스페이스: `session-steward` → `manage-sessions`, `switch-search` → `manage-sessions-search`.
-- 라우트 접두사: `/session-steward/api` → `/manage-sessions/api`, `/switch-search/api` → `/manage-sessions-search/api`.
-- 저장소: 색인·묘비 기본 디렉터리 `~/.dsh-switch-search` → `~/.dsh-manage-sessions-index`,
-  즐겨찾기 `session-steward-favorites.json` → `manage-sessions-favorites.json`(구 패키지와 충돌 없음).
+- 패키지명 / 플러그인 id: `dsh-session-steward` → `dsh-manage-session`. 표시 이름: 세션 관리(9개 언어 동기화).
+- 설정 네임스페이스: `session-steward` → `manage-session`, `switch-search` → `manage-session-search`.
+- 라우트 접두사: `/session-steward/api` → `/manage-session/api`, `/switch-search/api` → `/manage-session-search/api`.
+- 저장소: 색인·묘비 기본 디렉터리 `~/.dsh-switch-search` → `~/.dsh-manage-session-index`,
+  즐겨찾기 `session-steward-favorites.json` → `manage-session-favorites.json`(구 패키지와 충돌 없음).
 - 스타일 접두사 `dss_`/`dsws_` → `dms_`/`dmss_`. 스타일시트 id와 data 속성도 개명.
 
 ### 신규: 진입점 위치(상단 도구 슬롯 / 하단 대체)

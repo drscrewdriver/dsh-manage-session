@@ -1,5 +1,5 @@
 /**
- * 会话管理（dsh-manage-sessions）client dictionaries —— 只含管理台用到的键集
+ * 会话管理（dsh-manage-session）client dictionaries —— 只含管理台用到的键集
  * （zh / en / ja / ko / fr / de / it / ru / es）。
  *
  * 从合并包的搜索字典里**裁出管理台专属键**（keys 不变、文案不变），搜索子域
@@ -7,7 +7,7 @@
  */
 
 /** Dictionary namespace owned by this plugin. */
-export const NS = 'dsh-manage-sessions'
+export const NS = 'dsh-manage-session'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {

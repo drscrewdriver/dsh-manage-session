@@ -12,7 +12,7 @@ import test from 'node:test'
 const { NS, zh, en, ja, dictionaries, translate } = await import('../src/client/manage-locales.ts')
 
 test('namespace is the plugin id', () => {
-  assert.equal(NS, 'dsh-manage-sessions')
+  assert.equal(NS, 'dsh-manage-session')
 })
 
 test('en covers every zh key (no invented keys)', () => {

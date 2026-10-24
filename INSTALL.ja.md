@@ -17,7 +17,7 @@
 本ガイドで使用するプレースホルダは次のとおりです：
 
 - `<profile>`：変更対象の DSH profile。通常は `web`。
-- `dsh-manage-sessions`：npm パッケージ名かつランタイムプラグイン ID。
+- `dsh-manage-session`：npm パッケージ名かつランタイムプラグイン ID。
 
 > **対応 DSH 範囲：`engines.dsh` の rc 個別ホワイトリスト（`0.1.0-rc.2` 〜 `0.2.1-rc.3`、各版実測）。**
 >
@@ -36,7 +36,7 @@ ls "${DSH_HOME:-$HOME/.dsh}/profiles"
 ## 1. 公式インストール
 
 ```bash
-dsh plugin --profile <profile> add dsh-manage-sessions -w
+dsh plugin --profile <profile> add dsh-manage-session -w
 ```
 
 （profile が `web` のように pnpm ワークスペースのルートである場合、`-w` フラグが必要です。）
@@ -44,7 +44,7 @@ dsh plugin --profile <profile> add dsh-manage-sessions -w
 特定のバージョンを明示的にインストールする場合：
 
 ```bash
-dsh plugin --profile <profile> add dsh-manage-sessions@1.0.0 -w
+dsh plugin --profile <profile> add dsh-manage-session@1.0.0 -w
 ```
 
 公式 CLI は profile の依存関係、ロックファイル、`dsh.profile.bundles` を自動的に更新します。YAML の行を手動で追加しないでください。
@@ -55,17 +55,17 @@ DSH ランタイムは pnpm 11 を使用しており、その `minimumReleaseAge
 
 ```yaml
 minimumReleaseAgeExclude:
-  - dsh-manage-sessions@1.0.0
+  - dsh-manage-session@1.0.0
 ```
 
 ## 2. ホストの再起動
 
-**インストールまたはアップグレードの後には DSH の再起動が必要です。** ブラウザのページを再読み込みするだけでは不十分です。ホスト側は起動時に `/manage-sessions/api` ルートと設定名前空間を登録し、またアーカイブの取得元を再読み込みしない限り整理（prune）の結果は反映されません。
+**インストールまたはアップグレードの後には DSH の再起動が必要です。** ブラウザのページを再読み込みするだけでは不十分です。ホスト側は起動時に `/manage-session/api` ルートと設定名前空間を登録し、またアーカイブの取得元を再読み込みしない限り整理（prune）の結果は反映されません。
 
 ## 3. アップグレード
 
 ```bash
-dsh plugin --profile <profile> update dsh-manage-sessions -w
+dsh plugin --profile <profile> update dsh-manage-session -w
 ```
 
 その後 DSH を再起動してください。
@@ -76,18 +76,18 @@ dsh plugin --profile <profile> update dsh-manage-sessions -w
 
 ```bash
 #    ~/.dsh/profiles/<profile>/package.json dependencies:
-#      "dsh-manage-sessions": "link:<absolute path to dsh-manage-sessions>"
+#      "dsh-manage-session": "link:<absolute path to dsh-manage-session>"
 #    ~/.dsh/profiles/<profile>/cordis.patch.yml:
 #      - insert:
-#          - id: dsh-manage-sessions
-#            name: dsh-manage-sessions
+#          - id: dsh-manage-session
+#            name: dsh-manage-session
 cd ~/.dsh/profiles/<profile> && pnpm install && dsh web
 ```
 
 または、ローカルパスを指定して公式 CLI を使います（ネットワーク不要）：
 
 ```bash
-dsh plugin --profile <profile> add /absolute/path/to/dsh-manage-sessions -w
+dsh plugin --profile <profile> add /absolute/path/to/dsh-manage-session -w
 ```
 
 ソースチェックアウトからビルドする場合は次のスクリプトを使います：
@@ -106,9 +106,9 @@ pnpm build         # tsc -b && tsdown → lib/index.js + lib/index.d.ts + lib/cl
 依存関係とインストール済みバージョンを確認します：
 
 ```bash
-grep -n "dsh-manage-sessions" \
+grep -n "dsh-manage-session" \
   "${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/package.json"
-node -p "require('${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/node_modules/dsh-manage-sessions/package.json').version"
+node -p "require('${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/node_modules/dsh-manage-session/package.json').version"
 ```
 
 公式のコンポジションを確認します：
@@ -120,18 +120,18 @@ dsh --profile <profile> --dump-default-config
 次の内容が含まれている必要があります：
 
 ```yaml
-- id: dsh-manage-sessions
-  name: dsh-manage-sessions
+- id: dsh-manage-session
+  name: dsh-manage-session
 ```
 
 ## 6. プラグインの確認
 
-再起動後、サイドバーエントリ `dsh-manage-sessions` が利用可能になり、設定セクションは `manage-sessions` 名前空間を使用します。次を確認してください：
+再起動後、サイドバーエントリ `dsh-manage-session` が利用可能になり、設定セクションは `manage-session` 名前空間を使用します。次を確認してください：
 
 1. 両方のフィーチャーゲートがオンのとき、**カルテ室**と**健診**の両タブが描画される。
 2. `historyFiles` をオフにするとカルテ室タブが消え、すべての `session-history-*` 呼び出しが明示的な disabled エラーを返す。
 3. `healthCheck` をオフにすると健診タブが消え、すべての `session-health-*` 呼び出しが明示的な disabled エラーを返す。
-4. `/manage-sessions/api` 上の未知のメソッドは、黙って成功せず明示的なエラーを返す。
+4. `/manage-session/api` 上の未知のメソッドは、黙って成功せず明示的なエラーを返す。
 
 閉じられたドメインは `{ ok: false, error: '子域已关闭（…=false）：<method> 未注册' }` を返します — プラグインは空の殻を後に残しません。
 
@@ -150,7 +150,7 @@ dsh --profile <profile> --dump-default-config
 ## 8. 削除
 
 ```bash
-dsh plugin --profile <profile> remove dsh-manage-sessions
+dsh plugin --profile <profile> remove dsh-manage-session
 ```
 
 その後 DSH を再起動してください。

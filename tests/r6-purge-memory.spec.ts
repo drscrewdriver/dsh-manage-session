@@ -18,7 +18,7 @@ describe('收藏域（JSON 文件,原子写）', () => {
   it('set → list 往返;取消收藏移除;畸形文件按空集合重建', () => {
     const home = mkdtempSync(join(tmpdir(), 'fav-'))
     cleanups.push(home)
-    const paths = [join(home, 'storages', 'manage-sessions-favorites.json')]
+    const paths = [join(home, 'storages', 'manage-session-favorites.json')]
     expect(listFavorites(paths)).toEqual([])
     expect(setFavoriteState('a', true, paths).ok).toBe(true)
     expect(setFavoriteState('b', true, paths).ok).toBe(true)
@@ -43,7 +43,7 @@ describe('purge 内存路径（registry.deleteSession,免重启）', () => {
     const runtime: StewardRuntime = {
       config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false }),
       dshHome: join(tmpdir(), 'purge-mem'),
-      // 墓碑台账隔离到临时目录：缺省会回退真实 ~/.dsh-manage-sessions-index（测试污染）。
+      // 墓碑台账隔离到临时目录：缺省会回退真实 ~/.dsh-manage-session-index（测试污染）。
       registry: () => ({
         archivedSessionIds: [],
         deleteSession: async (id: string) => {

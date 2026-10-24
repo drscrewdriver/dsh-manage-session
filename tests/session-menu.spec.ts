@@ -22,7 +22,7 @@ describe('menuDeleteVisible', () => {
 describe('注册面常量', () => {
   it('席位名与宿主契约同串；id 带包名空间；order 落宿主行（450）之后', () => {
     expect(SESSION_MENU_SEAT).toBe('sidebar.workspaces.session.menu.item')
-    expect(SESSION_MENU_DELETE_ID).toBe('dsh-manage-sessions.delete')
+    expect(SESSION_MENU_DELETE_ID).toBe('dsh-manage-session.delete')
     expect(SESSION_MENU_DELETE_ORDER).toBeGreaterThan(450)
   })
 })

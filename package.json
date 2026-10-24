@@ -1,5 +1,5 @@
 {
-  "name": "dsh-manage-sessions",
+  "name": "dsh-manage-session",
   "version": "2.0.3",
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
@@ -21,7 +21,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/drscrewdriver/dsh-manage-sessions.git"
+    "url": "git+https://github.com/drscrewdriver/dsh-manage-session.git"
   },
   "type": "module",
   "main": "lib/index.js",

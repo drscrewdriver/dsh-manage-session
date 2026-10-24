@@ -1,7 +1,7 @@
 /**
- * dsh-manage-sessions 主机半身（会话管理器）：一条 fenced HTTP 路由 ——
+ * dsh-manage-session 主机半身（会话管理器）：一条 fenced HTTP 路由 ——
  *
- * - `/manage-sessions/api`：管理 + 体检，方法名一律 `session-*`。
+ * - `/manage-session/api`：管理 + 体检，方法名一律 `session-*`。
  *
  * 两个子域开关（feature gate，关掉不注册对应方法，调用返回显式 disabled 错误，
  * 不留空壳）：
@@ -419,7 +419,7 @@ async function runMemoryArchiveOps(
 
 /** 收藏文件候选（与管家其余域同一 dshHome 纪律）。 */
 function favoritesPathsFor(dshHome: string): string[] {
-  return [join(dshHome, 'storages', 'manage-sessions-favorites.json')]
+  return [join(dshHome, 'storages', 'manage-session-favorites.json')]
 }
 
 /** 本地日界（YYYY-MM-DD → epoch ms;nextDay 为排他上界）。非法返回 undefined。 */
@@ -471,7 +471,7 @@ export async function handleMethod(
   const settingsMethods = method === 'settings-describe' || method === 'settings-mutate'
   const known = [...HISTORY_METHODS, ...HEALTH_METHODS, 'session-catalog', 'settings-describe', 'settings-mutate'] as readonly string[]
   if (!known.includes(method)) {
-    return { ok: false, error: `未知的 manage-sessions API 方法 "${method}"` }
+    return { ok: false, error: `未知的 manage-session API 方法 "${method}"` }
   }
   if (!settingsMethods && !methodEnabled(method, config)) {
     const which = (HISTORY_METHODS as readonly string[]).includes(method) ? 'historyFiles' : 'healthCheck'
@@ -774,7 +774,7 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
   const log = (message: string): void => {
     try {
       const logger = (ctx as unknown as { logger?: { info?: (m: string) => void; warn?: (m: string) => void } }).logger
-      logger?.info?.(`[manage-sessions] ${message}`)
+      logger?.info?.(`[manage-session] ${message}`)
     } catch { /* 日志绝不允许破坏宿主 */ }
   }
 
@@ -856,7 +856,7 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
       const prefix = `${STEWARD_API_PREFIX}/`
       const method = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : undefined
       if (method === undefined || method === '' || method.includes('/')) {
-        writeJson(res, 404, { ok: false, error: `unknown manage-sessions API method` })
+        writeJson(res, 404, { ok: false, error: `unknown manage-session API method` })
         return
       }
       try {
@@ -867,5 +867,5 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
         writeJson(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err) })
       }
     },
-  }), 'dsh-manage-sessions: /manage-sessions/api route')
+  }), 'dsh-manage-session: /manage-session/api route')
 }

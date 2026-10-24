@@ -6,7 +6,7 @@
  * 字段里、client configForms 原生可用 —— 本桥在那些线上解析为 undefined，
  * describe/mutate 方法降级为「显式拒绝写」。
  *
- * 设置命名空间只有一个：`manage-sessions`（搜索子域已拆回 dsh-search-index，
+ * 设置命名空间只有一个：`manage-session`（搜索子域已拆回 dsh-search-index，
  * 搜索字段与命名空间不在本包）。schema 必须
  * **纯 plain**（不 withVolatile）—— volatile 节点会被 legacy register 拒收
  * （`$.enabled expected boolean`，TL beta.18 教训）。
@@ -36,7 +36,7 @@ export interface LegacySettingsBridge {
   update(ns: string, patch: Record<string, unknown>): Promise<void>
 }
 
-const SHARED_LEASE = Symbol.for('dsh-manage-sessions/legacy-settings-bridge')
+const SHARED_LEASE = Symbol.for('dsh-manage-session/legacy-settings-bridge')
 
 /** 管理命名空间 schema（纯 plain，无 volatile —— 老线 register 拒收 volatile 节点）。 */
 const StewardNsSchema = z.object({
@@ -99,7 +99,7 @@ export function installLegacySettingsBridge(ctx: unknown): BridgeState {
         }
 
       } catch (err) {
-        console.log(`[dsh-manage-sessions] legacy settings bridge FAILED (cards degrade to read-only): ${String(err instanceof Error ? err.message : err)}`)
+        console.log(`[dsh-manage-session] legacy settings bridge FAILED (cards degrade to read-only): ${String(err instanceof Error ? err.message : err)}`)
       }
     })
   } catch {
@@ -154,7 +154,7 @@ export function describeNamespaces(state: BridgeState): BridgeNamespaces {
  * 实测只含被拨过的键，未写键缺席→自然回退组合 config）。
  */
 export interface BridgeOverlayDocs {
-  /** manage-sessions ns 原始已写文档（桥未咬合时 = {}）。 */
+  /** manage-session ns 原始已写文档（桥未咬合时 = {}）。 */
   steward: Record<string, unknown>
 }
 

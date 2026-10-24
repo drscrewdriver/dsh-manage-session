@@ -1,15 +1,15 @@
 {
-  "id": "dsh-manage-sessions",
-  "name": "dsh-manage-sessions",
+  "id": "dsh-manage-session",
+  "name": "dsh-manage-session",
   "version": "2.0.3",
   "description": {
     "en": "Session Manager: one console over active and archived sessions (browse, filter, favorite, archive/unarchive, batch purge, delete) plus a four-gate session health checkup. The entry sits in the sidebar top tool slot right after the Plugins row when the host provides one, and falls back to the footer otherwise. No index of its own and no DRS dependency — search lives in dsh-search-index. Never rewrites session logs. (formerly dsh-session-steward)",
     "zh": "会话管理台：一屏管理活跃与归档会话（列表、筛选、收藏、归档与取消归档、批量清理、删除），外加四门会话体检。宿主提供侧栏顶部工具槽位时入口落在「插件」行之后，否则回落底栏。不自建索引、不依赖 DRS——搜索能力在 dsh-search-index。不改写会话日志。（原名 dsh-session-steward）"
   },
-  "homepage": "https://github.com/drscrewdriver/dsh-manage-sessions",
+  "homepage": "https://github.com/drscrewdriver/dsh-manage-session",
   "repository": {
     "type": "git",
-    "url": "https://github.com/drscrewdriver/dsh-manage-sessions.git"
+    "url": "https://github.com/drscrewdriver/dsh-manage-session.git"
   },
   "license": "MIT",
   "engines": {

@@ -17,7 +17,7 @@ import type { StewardConfig } from '../config.ts'
 import { callHostAny } from './host-api.ts'
 
 /** 与宿主 settings-bridge.ts 的命名空间键一致（存储键稳定承诺）。 */
-const STEWARD_NS = 'manage-sessions'
+const STEWARD_NS = 'manage-session'
 
 /** 单视图快照（StewardCardScope / SwitchCardScope 的结构交集）。 */
 export interface BridgeSnapshot<V> {
@@ -162,7 +162,7 @@ function makeBridgeScope<V extends object>(
 
 let stewardScope: BridgeScope<StewardConfig> | undefined
 
-/** 管家卡/管家入口的桥 scope（命名空间 manage-sessions）。 */
+/** 管家卡/管家入口的桥 scope（命名空间 manage-session）。 */
 export function stewardBridgeScope(): BridgeScope<StewardConfig> {
   stewardScope ??= makeBridgeScope<StewardConfig>(STEWARD_NS, (doc) => doc.steward)
   return stewardScope

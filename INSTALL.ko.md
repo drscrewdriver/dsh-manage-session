@@ -17,7 +17,7 @@
 이 가이드의 자리표시자는 다음과 같습니다.
 
 - `<profile>`: 수정할 DSH 프로필이며, 보통 `web`입니다;
-- `dsh-manage-sessions`: npm 패키지이자 런타임 플러그인 ID입니다.
+- `dsh-manage-session`: npm 패키지이자 런타임 플러그인 ID입니다.
 
 > **지원 DSH 범위: `engines.dsh`의 rc별 화이트리스트(`0.1.0-rc.2` ~ `0.2.1-rc.3`, 각 버전 실측).**
 >
@@ -36,7 +36,7 @@ ls "${DSH_HOME:-$HOME/.dsh}/profiles"
 ## 1. 공식 설치
 
 ```bash
-dsh plugin --profile <profile> add dsh-manage-sessions -w
+dsh plugin --profile <profile> add dsh-manage-session -w
 ```
 
 (프로필이 `web`처럼 pnpm 워크스페이스 루트인 경우 `-w` 플래그가 필요합니다.)
@@ -44,7 +44,7 @@ dsh plugin --profile <profile> add dsh-manage-sessions -w
 특정 버전을 명시적으로 설치:
 
 ```bash
-dsh plugin --profile <profile> add dsh-manage-sessions@1.0.0 -w
+dsh plugin --profile <profile> add dsh-manage-session@1.0.0 -w
 ```
 
 공식 CLI는 프로필 의존성, 잠금 파일, `dsh.profile.bundles`를 자동으로 갱신합니다. YAML 행을 수동으로 추가하지 마세요.
@@ -55,17 +55,17 @@ DSH 런타임은 pnpm 11을 사용하며, 그 `minimumReleaseAge` 정책이 갓 
 
 ```yaml
 minimumReleaseAgeExclude:
-  - dsh-manage-sessions@1.0.0
+  - dsh-manage-session@1.0.0
 ```
 
 ## 2. 호스트 재시작
 
-**설치 또는 업그레이드 후에는 DSH 재시작이 필요합니다.** 브라우저 페이지 새로고침만으로는 부족합니다: 호스트 측은 시작 시 `/manage-sessions/api` 라우트와 설정 네임스페이스를 등록하며, 정리 결과를 반영하려면 호스트가 아카이브 소스를 다시 로드해야 합니다.
+**설치 또는 업그레이드 후에는 DSH 재시작이 필요합니다.** 브라우저 페이지 새로고침만으로는 부족합니다: 호스트 측은 시작 시 `/manage-session/api` 라우트와 설정 네임스페이스를 등록하며, 정리 결과를 반영하려면 호스트가 아카이브 소스를 다시 로드해야 합니다.
 
 ## 3. 업그레이드
 
 ```bash
-dsh plugin --profile <profile> update dsh-manage-sessions -w
+dsh plugin --profile <profile> update dsh-manage-session -w
 ```
 
 이후 DSH를 재시작하세요.
@@ -76,18 +76,18 @@ dsh plugin --profile <profile> update dsh-manage-sessions -w
 
 ```bash
 #    ~/.dsh/profiles/<profile>/package.json dependencies:
-#      "dsh-manage-sessions": "link:<absolute path to dsh-manage-sessions>"
+#      "dsh-manage-session": "link:<absolute path to dsh-manage-session>"
 #    ~/.dsh/profiles/<profile>/cordis.patch.yml:
 #      - insert:
-#          - id: dsh-manage-sessions
-#            name: dsh-manage-sessions
+#          - id: dsh-manage-session
+#            name: dsh-manage-session
 cd ~/.dsh/profiles/<profile> && pnpm install && dsh web
 ```
 
 또는 로컬 경로와 함께 공식 CLI를 사용하세요(네트워크 불필요):
 
 ```bash
-dsh plugin --profile <profile> add /absolute/path/to/dsh-manage-sessions -w
+dsh plugin --profile <profile> add /absolute/path/to/dsh-manage-session -w
 ```
 
 소스 체크아웃에서 빌드할 때는 다음 스크립트를 사용합니다:
@@ -106,9 +106,9 @@ pnpm build         # tsc -b && tsdown → lib/index.js + lib/index.d.ts + lib/cl
 의존성과 설치된 버전을 확인합니다:
 
 ```bash
-grep -n "dsh-manage-sessions" \
+grep -n "dsh-manage-session" \
   "${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/package.json"
-node -p "require('${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/node_modules/dsh-manage-sessions/package.json').version"
+node -p "require('${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/node_modules/dsh-manage-session/package.json').version"
 ```
 
 공식 구성을 확인합니다:
@@ -120,18 +120,18 @@ dsh --profile <profile> --dump-default-config
 다음이 포함되어야 합니다:
 
 ```yaml
-- id: dsh-manage-sessions
-  name: dsh-manage-sessions
+- id: dsh-manage-session
+  name: dsh-manage-session
 ```
 
 ## 6. 플러그인 검증
 
-재시작 후 사이드바 항목 `dsh-manage-sessions`를 사용할 수 있고, 설정 섹션은 `manage-sessions` 네임스페이스를 사용합니다. 다음을 확인하세요:
+재시작 후 사이드바 항목 `dsh-manage-session`를 사용할 수 있고, 설정 섹션은 `manage-session` 네임스페이스를 사용합니다. 다음을 확인하세요:
 
 1. 두 기능 게이트가 모두 켜져 있을 때 **기록 보관소**와 **점검** 두 탭이 모두 렌더링됩니다.
 2. `historyFiles`를 끄면 기록 보관소 탭이 사라지고 모든 `session-history-*` 호출이 명시적인 disabled 오류를 반환합니다.
 3. `healthCheck`를 끄면 점검 탭이 사라지고 모든 `session-health-*` 호출이 명시적인 disabled 오류를 반환합니다.
-4. `/manage-sessions/api`의 인식되지 않는 메서드는 조용히 성공하지 않고 명시적인 오류를 반환합니다.
+4. `/manage-session/api`의 인식되지 않는 메서드는 조용히 성공하지 않고 명시적인 오류를 반환합니다.
 
 닫힌 도메인은 `{ ok: false, error: '子域已关闭（…=false）：<method> 未注册' }`를 반환합니다 — 플러그인은 빈 껍데기를 남기지 않습니다.
 
@@ -150,7 +150,7 @@ dsh --profile <profile> --dump-default-config
 ## 8. 제거
 
 ```bash
-dsh plugin --profile <profile> remove dsh-manage-sessions
+dsh plugin --profile <profile> remove dsh-manage-session
 ```
 
 이후 DSH를 재시작하세요.

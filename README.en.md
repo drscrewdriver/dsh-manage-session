@@ -1,6 +1,6 @@
-# dsh-manage-sessions (Session Manager)
+# dsh-manage-session (Session Manager)
 
-> **Former name**: `dsh-session-steward` (Session Steward). Renamed to `dsh-manage-sessions` at 2.0.0;
+> **Former name**: `dsh-session-steward` (Session Steward). Renamed to `dsh-manage-session` at 2.0.0;
 > search/indexing moved back to [`dsh-search-index`](https://github.com/drscrewdriver/dsh-search-index).
 
 A DSH web plugin: **one console over active and archived sessions + a four-gate checkup**.
@@ -29,24 +29,24 @@ Supports DSH 0.1.0-rc.2, 0.1.0-rc.3, 0.1.0-rc.6, 0.1.0-rc.7, 0.1.0-rc.8, 0.1.1-r
 ## Install
 
 ```bash
-dsh plugin --profile web add dsh-manage-sessions
+dsh plugin --profile web add dsh-manage-session
 ```
 
 Restart the host process afterwards.
 
 ## Routes
 
-Prefix `/manage-sessions/api`, methods named `session-*`:
+Prefix `/manage-session/api`, methods named `session-*`:
 `session-catalog`, `session-history-list|archive|prune|purge`, `session-history-favorites-list` /
 `-favorite-set`, `session-health-status|scan|session|repair|source-migrate`.
 
 ## Settings
 
-Namespace `manage-sessions`: `enabled`, `historyFiles`, `healthCheck`, `directDelete`.
+Namespace `manage-session`: `enabled`, `historyFiles`, `healthCheck`, `directDelete`.
 
 ## Storage
 
-- `~/.dsh/storages/manage-sessions-favorites.json` — favorites
+- `~/.dsh/storages/manage-session-favorites.json` — favorites
 - `~/.dsh/storages/workspace.json` — host-owned archive array + workspace membership (backed up before writes)
 
 ## Development

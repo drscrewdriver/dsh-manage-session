@@ -19,10 +19,10 @@ export type ManageTranslate = (key: LocaleKey, params?: Record<string, unknown>)
 /** 样式（幂等注入;类名沿用 dmss_ 前缀,与搜索面板共享视觉语言）。 */
 function injectManageStyles(): () => void {
   if (typeof document === 'undefined') return () => {}
-  if (document.querySelector('style[data-plugin-css="dsh-manage-sessions/manage"]') !== null) return () => {}
+  if (document.querySelector('style[data-plugin-css="dsh-manage-session/manage"]') !== null) return () => {}
   const tag = document.createElement('style')
-  tag.dataset.plugin = 'dsh-manage-sessions'
-  tag.dataset.pluginCss = 'dsh-manage-sessions/manage'
+  tag.dataset.plugin = 'dsh-manage-session'
+  tag.dataset.pluginCss = 'dsh-manage-session/manage'
   tag.textContent = `
 .dmss_manageRoot{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;padding:0}
 .dmss_manageList{flex:1 1 auto;min-height:0;overflow-y:auto;margin:8px 0 0;padding:0 6px 10px}

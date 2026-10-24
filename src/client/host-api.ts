@@ -1,5 +1,5 @@
 /**
- * 客户端 host 调用助手：一切经 fenced `/manage-sessions/api/<method>` 路由，
+ * 客户端 host 调用助手：一切经 fenced `/manage-session/api/<method>` 路由，
  * 不 value-import 任何官方包（与 dsh-session-search-toggle 的 host-api.ts 同范式，
  * 仅把路由前缀换成会话管理自己的）。
  */
@@ -13,7 +13,7 @@ export function callHost<T>(method: string, body: unknown): Promise<{ ok: boolea
   const timer = controller !== undefined && typeof setTimeout === 'function'
     ? setTimeout(() => { controller.abort() }, FETCH_TIMEOUT)
     : undefined
-  return fetch(`/manage-sessions/api/${method}`, {
+  return fetch(`/manage-session/api/${method}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -47,7 +47,7 @@ export function callHostAny<T>(
   const timer = typeof setTimeout === 'function'
     ? setTimeout(() => { controller?.abort() }, timeout)
     : undefined
-  return fetch(`/manage-sessions/api/${method}`, {
+  return fetch(`/manage-session/api/${method}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -218,7 +218,7 @@ export interface HostSessionItem {
 }
 
 /**
- * 直接删除入口开关（`manage-sessions.directDelete`，缺省关）。
+ * 直接删除入口开关（`manage-session.directDelete`，缺省关）。
  * 由 `session-health-status` 的 switches 面读取；旧宿主半无该字段 → false
  * （破坏性入口不出现是安全方向）。
  */

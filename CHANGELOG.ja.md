@@ -8,11 +8,11 @@
 
 ### 位置づけと命名
 
-- パッケージ名 / プラグイン id：`dsh-session-steward` → `dsh-manage-sessions`。表示名：セッション管理（9 言語同期）。
-- 設定名前空間：`session-steward` → `manage-sessions`、`switch-search` → `manage-sessions-search`。
-- ルート接頭辞：`/session-steward/api` → `/manage-sessions/api`、`/switch-search/api` → `/manage-sessions-search/api`。
-- ストレージ：索引・墓碑の既定ディレクトリ `~/.dsh-switch-search` → `~/.dsh-manage-sessions-index`、
-  お気に入り `session-steward-favorites.json` → `manage-sessions-favorites.json`（旧パッケージと干渉しません）。
+- パッケージ名 / プラグイン id：`dsh-session-steward` → `dsh-manage-session`。表示名：セッション管理（9 言語同期）。
+- 設定名前空間：`session-steward` → `manage-session`、`switch-search` → `manage-session-search`。
+- ルート接頭辞：`/session-steward/api` → `/manage-session/api`、`/switch-search/api` → `/manage-session-search/api`。
+- ストレージ：索引・墓碑の既定ディレクトリ `~/.dsh-switch-search` → `~/.dsh-manage-session-index`、
+  お気に入り `session-steward-favorites.json` → `manage-session-favorites.json`（旧パッケージと干渉しません）。
 - スタイル接頭辞 `dss_`/`dsws_` → `dms_`/`dmss_`。スタイルシート id と data 属性も改名。
 
 ### 新規：入口の位置（上部ツール枠 / 下部フォールバック）

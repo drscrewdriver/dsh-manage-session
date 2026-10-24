@@ -1,10 +1,10 @@
-# dsh-manage-sessions bundle patch
+# dsh-manage-session bundle patch
 #
 # 通过官方 CLI 安装时 ——
 #
-#   dsh plugin --profile web add dsh-manage-sessions
+#   dsh plugin --profile web add dsh-manage-session
 #
-# —— 命令会把 `dsh-manage-sessions` 追加到 bundle 栈，profile 启动时合并本补丁
+# —— 命令会把 `dsh-manage-session` 追加到 bundle 栈，profile 启动时合并本补丁
 # （单个 insert，插入本插件行）。
 #
 # 注:P1「替换官方 workspace 注册表」已撤编(beta.8-12 实测桌面宿主对用户层
@@ -15,5 +15,5 @@
 # 客户端口不使用本补丁: 入口位次由客户端半身自行判定(宿主声明
 # `sidebar.panellist` + `main` 两个席位 → 顶栏面板行;否则回落底栏)。
 - insert:
-    - id: dsh-manage-sessions
-      name: 'dsh-manage-sessions'
+    - id: dsh-manage-session
+      name: 'dsh-manage-session'

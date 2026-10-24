@@ -1,6 +1,6 @@
-# dsh-manage-sessions（セッションマネージャー）
+# dsh-manage-session（セッションマネージャー）
 
-> **旧名**：`dsh-session-steward`（セッション・スチュワード）。2.0.0 で `dsh-manage-sessions` に改名し、
+> **旧名**：`dsh-session-steward`（セッション・スチュワード）。2.0.0 で `dsh-manage-session` に改名し、
 > 検索／索引は [`dsh-search-index`](https://github.com/drscrewdriver/dsh-search-index) に戻しました。
 
 DSH Web プラグイン：**アクティブ／アーカイブ済みセッションの統合管理台＋セッション健診**。
@@ -28,11 +28,11 @@ Supports DSH 0.1.0-rc.2, 0.1.0-rc.3, 0.1.0-rc.6, 0.1.0-rc.7, 0.1.0-rc.8, 0.1.1-r
 ## インストール／設定／開発
 
 ```bash
-dsh plugin --profile web add dsh-manage-sessions   # インストール後に再起動
+dsh plugin --profile web add dsh-manage-session   # インストール後に再起動
 pnpm install && pnpm typecheck && pnpm test && pnpm build
 ```
 
-設定名前空間 `manage-sessions`：`enabled`、`historyFiles`、`healthCheck`、`directDelete`。
+設定名前空間 `manage-session`：`enabled`、`historyFiles`、`healthCheck`、`directDelete`。
 
 ## ライセンス
 

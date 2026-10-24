@@ -1,7 +1,7 @@
 /**
  * 会话管理的多语言文案（zh 为键集基准，另含 en 与 ja/ko/fr/de/it/ru/es）。
  *
- * 硬约束：本文件**不得出现「搜索」二字** —— 搜索/索引属 dsh-manage-sessions-search 那一片。
+ * 硬约束：本文件**不得出现「搜索」二字** —— 搜索/索引属 dsh-manage-session-search 那一片。
  * 文案走 `translate(t, key, params)`，字典由官方 locale 服务注册（缺失时回退内置 zh）。
  */
 

@@ -7,11 +7,11 @@
 
 ### 破坏性变化
 
-- 删除搜索子域：`/manage-sessions-search/api` 路由、FTS5 索引引擎/水位同步/重建/快照、
+- 删除搜索子域：`/manage-session-search/api` 路由、FTS5 索引引擎/水位同步/重建/快照、
   DRS 语料源、搜索面板与搜索设置卡、搜索入口与搜索页全部移除。
 - 依赖：移除 `dsh-reference-session-collector`（dependencies + pluginDependencies）与
   `better-sqlite3`（optional）。
-- 设置：命名空间只剩 `manage-sessions`；字段删 `search` / `defaultMode` / `autoSync` /
+- 设置：命名空间只剩 `manage-session`；字段删 `search` / `defaultMode` / `autoSync` /
   `syncIntervalMs` / `archiveKeep` / `indexDir` / `corpusSource` / `drsBaseUrl`。
 - 新方法 `session-catalog`：管理台语料改由宿主 `sessionQuery` + 官方归档集合现场拼装
   （活跃/归档同表，归档标记 = 归档集合成员）。

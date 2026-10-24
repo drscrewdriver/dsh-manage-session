@@ -46,7 +46,7 @@ function runtimeWith(bridge: BridgeState | undefined): StewardRuntime {
 
 describe('settings-describe', () => {
   it('legacy 桥：回两命名空间文档 + writable=true + revision', async () => {
-    const docs = fakeBridge({ 'manage-sessions': { enabled: false } })
+    const docs = fakeBridge({ 'manage-session': { enabled: false } })
     const runtime = runtimeWith({ bridge: docs.face, revision: 7 })
     const res = await handleMethod('settings-describe', {}, runtime) as {
       ok: boolean
@@ -57,7 +57,7 @@ describe('settings-describe', () => {
     expect(res.ok).toBe(true)
     expect(res.writable).toBe(true)
     expect(res.revision).toBe(7)
-    expect(res.namespaces['manage-sessions']).toMatchObject({ enabled: false, historyFiles: true })
+    expect(res.namespaces['manage-session']).toMatchObject({ enabled: false, historyFiles: true })
   })
 
   it('modern 宿主（无桥）：只读投影 + writable=false，mutate 显式拒绝', async () => {
@@ -65,7 +65,7 @@ describe('settings-describe', () => {
     const described = await handleMethod('settings-describe', {}, runtime) as { ok: boolean; writable: boolean; namespaces: Record<string, Record<string, unknown>> }
     expect(described.ok).toBe(true)
     expect(described.writable).toBe(false)
-    const mutated = await handleMethod('settings-mutate', { ns: 'manage-sessions', fields: { enabled: false } }, runtime) as { ok: boolean; error?: string }
+    const mutated = await handleMethod('settings-mutate', { ns: 'manage-session', fields: { enabled: false } }, runtime) as { ok: boolean; error?: string }
     expect(mutated.ok).toBe(false)
     expect(mutated.error).toContain('legacy settings 服务')
   })
@@ -90,15 +90,15 @@ describe('settings-mutate', () => {
     const docs = fakeBridge()
     const state: BridgeState = { bridge: docs.face, revision: 0 }
     const runtime = runtimeWith(state)
-    const res = await handleMethod('settings-mutate', { ns: 'manage-sessions', fields: { enabled: false, historyFiles: false } }, runtime) as {
+    const res = await handleMethod('settings-mutate', { ns: 'manage-session', fields: { enabled: false, historyFiles: false } }, runtime) as {
       ok: boolean
       revision?: number
       namespaces?: Record<string, Record<string, unknown>>
     }
     expect(res.ok).toBe(true)
     expect(res.revision).toBe(1)
-    expect(docs.docs['manage-sessions']).toMatchObject({ enabled: false, historyFiles: false })
-    expect(res.namespaces?.['manage-sessions']).toMatchObject({ enabled: false, healthCheck: true })
+    expect(docs.docs['manage-session']).toMatchObject({ enabled: false, historyFiles: false })
+    expect(res.namespaces?.['manage-session']).toMatchObject({ enabled: false, healthCheck: true })
   })
 
 
@@ -107,10 +107,10 @@ describe('settings-mutate', () => {
     const runtime = runtimeWith({ bridge: docs.face, revision: 0 })
     const cases: Array<{ payload: unknown; errorPart: string }> = [
       { payload: { ns: 'no-such-ns', fields: { enabled: true } }, errorPart: '未知设置命名空间' },
-      { payload: { ns: 'manage-sessions', fields: { nope: true } }, errorPart: '不接受字段' },
-      { payload: { ns: 'manage-sessions', fields: { enabled: 'yes' } }, errorPart: '期望布尔值' },
-      { payload: { ns: 'manage-sessions', fields: {} }, errorPart: 'fields 为空' },
-      { payload: { ns: 'manage-sessions', fields: 'not-an-object' }, errorPart: 'fields 必须是对象' },
+      { payload: { ns: 'manage-session', fields: { nope: true } }, errorPart: '不接受字段' },
+      { payload: { ns: 'manage-session', fields: { enabled: 'yes' } }, errorPart: '期望布尔值' },
+      { payload: { ns: 'manage-session', fields: {} }, errorPart: 'fields 为空' },
+      { payload: { ns: 'manage-session', fields: 'not-an-object' }, errorPart: 'fields 必须是对象' },
     ]
     for (const { payload, errorPart } of cases) {
       const res = await handleMethod('settings-mutate', payload, runtime) as { ok: boolean; error?: string }
@@ -123,7 +123,7 @@ describe('settings-mutate', () => {
     const docs = fakeBridge()
     const state: BridgeState = { bridge: docs.face, revision: 3 }
     docs.failNext = true
-    const res = await handleMethod('settings-mutate', { ns: 'manage-sessions', fields: { enabled: false } }, runtimeWith(state)) as { ok: boolean; error?: string }
+    const res = await handleMethod('settings-mutate', { ns: 'manage-session', fields: { enabled: false } }, runtimeWith(state)) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('宿主拒绝写入')
     expect(state.revision).toBe(3)
@@ -136,13 +136,13 @@ describe('bridgeOverlay（运行时叠加文档——3085 实锤补口）', () =
   })
 
   it('桥咬合：只回已写键、不铺缺省；两 ns 分开不串', () => {
-    const docs = fakeBridge({ 'manage-sessions': { directDelete: true } })
+    const docs = fakeBridge({ 'manage-session': { directDelete: true } })
     const ov = bridgeOverlay({ bridge: docs.face, revision: 0 })
     // 已写键原样透出
     expect(ov.steward).toEqual({ directDelete: true })
     // 未写键缺席（不铺 DEFAULT_CONFIG）——current() 据此回退组合值
     expect('enabled' in ov.steward).toBe(false)
-    // 两 ns 各自独立：manage-sessions 的 enabled 不会被 manage-sessions-search 串改
+    // 两 ns 各自独立：manage-session 的 enabled 不会被 manage-session-search 串改
     expect(ov.steward['syncIntervalMs']).toBeUndefined()
   })
 

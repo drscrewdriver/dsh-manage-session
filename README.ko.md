@@ -1,6 +1,6 @@
-# dsh-manage-sessions (세션 매니저)
+# dsh-manage-session (세션 매니저)
 
-> **이전 이름**: `dsh-session-steward`(세션 스튜어드). 2.0.0에서 `dsh-manage-sessions`로 개명했고,
+> **이전 이름**: `dsh-session-steward`(세션 스튜어드). 2.0.0에서 `dsh-manage-session`로 개명했고,
 > 검색/색인은 [`dsh-search-index`](https://github.com/drscrewdriver/dsh-search-index)로 되돌렸습니다.
 
 DSH 웹 플러그인: **활성·보관 세션 통합 관리대 + 세션 건강 점검**.
@@ -27,11 +27,11 @@ Supports DSH 0.1.0-rc.2, 0.1.0-rc.3, 0.1.0-rc.6, 0.1.0-rc.7, 0.1.0-rc.8, 0.1.1-r
 ## 설치 / 설정 / 개발
 
 ```bash
-dsh plugin --profile web add dsh-manage-sessions   # 설치 후 재시작
+dsh plugin --profile web add dsh-manage-session   # 설치 후 재시작
 pnpm install && pnpm typecheck && pnpm test && pnpm build
 ```
 
-설정 네임스페이스 `manage-sessions`: `enabled`, `historyFiles`, `healthCheck`, `directDelete`.
+설정 네임스페이스 `manage-session`: `enabled`, `historyFiles`, `healthCheck`, `directDelete`.
 
 ## 라이선스
 

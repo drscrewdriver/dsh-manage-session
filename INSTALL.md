@@ -17,7 +17,7 @@ This guide uses only the official DSH `dsh plugin` command. That command install
 The placeholders in this guide are:
 
 - `<profile>`: the DSH profile to modify, usually `web`;
-- `dsh-manage-sessions`: the npm package and runtime plugin ID.
+- `dsh-manage-session`: the npm package and runtime plugin ID.
 
 > **Supported DSH range: the enumerated whitelist in `engines.dsh` (`0.1.0-rc.2` … `0.2.1-rc.3`, each rc tested).**
 >
@@ -36,7 +36,7 @@ Use the profile named by your running DSH process. `web` is common, but the acti
 ## 1. Official installation
 
 ```bash
-dsh plugin --profile <profile> add dsh-manage-sessions -w
+dsh plugin --profile <profile> add dsh-manage-session -w
 ```
 
 (the `-w` flag is required when the profile is a pnpm workspace root, as `web` is.)
@@ -44,7 +44,7 @@ dsh plugin --profile <profile> add dsh-manage-sessions -w
 Install a specific version explicitly:
 
 ```bash
-dsh plugin --profile <profile> add dsh-manage-sessions@1.0.0 -w
+dsh plugin --profile <profile> add dsh-manage-session@1.0.0 -w
 ```
 
 The official CLI updates the profile dependency, the lockfile, and `dsh.profile.bundles` automatically. Do not add a manual YAML row.
@@ -55,17 +55,17 @@ The DSH runtime uses pnpm 11, whose `minimumReleaseAge` policy may block a fresh
 
 ```yaml
 minimumReleaseAgeExclude:
-  - dsh-manage-sessions@1.0.0
+  - dsh-manage-session@1.0.0
 ```
 
 ## 2. Restart the host
 
-**A DSH restart is required after installing or upgrading.** Refreshing the browser page is not enough: the host half registers the `/manage-sessions/api` routes and the settings namespace at startup, and the host must reload the archive source before it reflects a prune.
+**A DSH restart is required after installing or upgrading.** Refreshing the browser page is not enough: the host half registers the `/manage-session/api` routes and the settings namespace at startup, and the host must reload the archive source before it reflects a prune.
 
 ## 3. Upgrade
 
 ```bash
-dsh plugin --profile <profile> update dsh-manage-sessions -w
+dsh plugin --profile <profile> update dsh-manage-session -w
 ```
 
 Restart DSH afterwards.
@@ -76,18 +76,18 @@ For development or offline installs, register the plugin from a local checkout:
 
 ```bash
 #    ~/.dsh/profiles/<profile>/package.json dependencies:
-#      "dsh-manage-sessions": "link:<absolute path to dsh-manage-sessions>"
+#      "dsh-manage-session": "link:<absolute path to dsh-manage-session>"
 #    ~/.dsh/profiles/<profile>/cordis.patch.yml:
 #      - insert:
-#          - id: dsh-manage-sessions
-#            name: dsh-manage-sessions
+#          - id: dsh-manage-session
+#            name: dsh-manage-session
 cd ~/.dsh/profiles/<profile> && pnpm install && dsh web
 ```
 
 Or use the official CLI with a local path (no network needed):
 
 ```bash
-dsh plugin --profile <profile> add /absolute/path/to/dsh-manage-sessions -w
+dsh plugin --profile <profile> add /absolute/path/to/dsh-manage-session -w
 ```
 
 Building from a source checkout uses these scripts:
@@ -106,9 +106,9 @@ pnpm build         # tsc -b && tsdown → lib/index.js + lib/index.d.ts + lib/cl
 Check the dependency and the installed version:
 
 ```bash
-grep -n "dsh-manage-sessions" \
+grep -n "dsh-manage-session" \
   "${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/package.json"
-node -p "require('${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/node_modules/dsh-manage-sessions/package.json').version"
+node -p "require('${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/node_modules/dsh-manage-session/package.json').version"
 ```
 
 Check the official composition:
@@ -120,18 +120,18 @@ dsh --profile <profile> --dump-default-config
 It must contain:
 
 ```yaml
-- id: dsh-manage-sessions
-  name: dsh-manage-sessions
+- id: dsh-manage-session
+  name: dsh-manage-session
 ```
 
 ## 6. Verify the plugin
 
-After the restart, the sidebar entry `dsh-manage-sessions` is available and the settings section uses the `manage-sessions` namespace. Confirm:
+After the restart, the sidebar entry `dsh-manage-session` is available and the settings section uses the `manage-session` namespace. Confirm:
 
 1. Both tabs render — **Retirement Home** and **Checkup** — while both feature gates are on.
 2. Turning `historyFiles` off removes the Retirement Home tab and makes every `session-history-*` call return an explicit disabled error.
 3. Turning `healthCheck` off removes the Checkup tab and makes every `session-health-*` call return an explicit disabled error.
-4. An unrecognized method on `/manage-sessions/api` returns an explicit error rather than succeeding silently.
+4. An unrecognized method on `/manage-session/api` returns an explicit error rather than succeeding silently.
 
 Closed domains return `{ ok: false, error: '子域已关闭（…=false）：<method> 未注册' }` — the plugin does not leave empty shells behind.
 
@@ -150,7 +150,7 @@ Closed domains return `{ ok: false, error: '子域已关闭（…=false）：<me
 ## 8. Remove
 
 ```bash
-dsh plugin --profile <profile> remove dsh-manage-sessions
+dsh plugin --profile <profile> remove dsh-manage-session
 ```
 
 Restart DSH afterwards.

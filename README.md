@@ -1,6 +1,6 @@
-# dsh-manage-sessions（会话管理台 / Session Manager）
+# dsh-manage-session（会话管理台 / Session Manager）
 
-> **原名**：`dsh-session-steward`（会话管家）。本仓库自 2.0.0 起改名为 `dsh-manage-sessions`，
+> **原名**：`dsh-session-steward`（会话管家）。本仓库自 2.0.0 起改名为 `dsh-manage-session`，
 > 并把搜索/索引能力拆回 [`dsh-search-index`](https://github.com/drscrewdriver/dsh-search-index)。
 
 DSH Web 插件：**活跃与归档会话的统一管理台 + 四门体检**。
@@ -34,16 +34,16 @@ DSH Web 插件：**活跃与归档会话的统一管理台 + 四门体检**。
 ## 安装
 
 ```bash
-dsh plugin --profile web add dsh-manage-sessions
+dsh plugin --profile web add dsh-manage-session
 # 或本地 tgz
-dsh plugin --profile web add "file:E:/test/rewrite-agently/mine-dsh-plugins/dsh-manage-sessions/dsh-manage-sessions-2.0.0.tgz"
+dsh plugin --profile web add "file:E:/test/rewrite-agently/mine-dsh-plugins/dsh-manage-session/dsh-manage-session-2.0.0.tgz"
 ```
 
 安装后**必须重启宿主进程**（仅刷新页面无效）。
 
 ## 路由契约
 
-前缀 `/manage-sessions/api`，方法名一律 `session-*`；未识别的方法返回显式错误，绝不静默。
+前缀 `/manage-session/api`，方法名一律 `session-*`；未识别的方法返回显式错误，绝不静默。
 
 | 方法 | 作用 |
 |---|---|
@@ -58,7 +58,7 @@ dsh plugin --profile web add "file:E:/test/rewrite-agently/mine-dsh-plugins/dsh-
 
 ## 设置
 
-命名空间：`manage-sessions`。
+命名空间：`manage-session`。
 
 | 开关 | 字段 | 关闭效果 |
 |---|---|---|
@@ -71,7 +71,7 @@ dsh plugin --profile web add "file:E:/test/rewrite-agently/mine-dsh-plugins/dsh-
 
 | 路径 | 内容 |
 |---|---|
-| `~/.dsh/storages/manage-sessions-favorites.json` | 收藏集合（按 sessionId） |
+| `~/.dsh/storages/manage-session-favorites.json` | 收藏集合（按 sessionId） |
 | `~/.dsh/storages/workspace.json` | 归档数组与工作区成员表（**宿主文件**，本插件写入前自动备份） |
 
 ## 四门体检

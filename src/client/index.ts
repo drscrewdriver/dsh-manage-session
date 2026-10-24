@@ -36,7 +36,7 @@ export { STEWARD_ENTRY_ID, STEWARD_SETTINGS_NAMESPACE, TAB_HEALTH }
 export { translate } from './locales.ts'
 
 /** 字典命名空间（locale.register 用）。 */
-export const NS = 'dsh-manage-sessions'
+export const NS = 'dsh-manage-session'
 
 /** 槽位服务面（结构化镜像）。 */
 interface StewardSlotsService {
@@ -72,7 +72,7 @@ export interface StewardFooterProps {
 
 /** 注入样式（幂等）。 */
 function injectStyles(): () => void {
-  const id = 'dsh-manage-sessions-styles'
+  const id = 'dsh-manage-session-styles'
   if (typeof document === 'undefined') return () => {}
   if (document.getElementById(id) !== null) return () => {}
   const style = document.createElement('style')
@@ -187,11 +187,11 @@ function injectStyles(): () => void {
  * @param ctx - 客户端上下文（slots、可选 locale / configForms）。
  */
 export function apply(ctx: Context): void {
-  ctx.effect(() => injectStyles(), 'dsh-manage-sessions: stylesheet')
+  ctx.effect(() => injectStyles(), 'dsh-manage-session: stylesheet')
 
   const locale = ctx.get('locale') as StewardLocaleService | undefined
   if (locale !== undefined && typeof locale.register === 'function') {
-    ctx.effect(() => locale.register(NS, dictionaries), 'dsh-manage-sessions: dictionaries')
+    ctx.effect(() => locale.register(NS, dictionaries), 'dsh-manage-session: dictionaries')
   }
 
   // 数据面回退链（台账 A2 定案 + 0.1.7 实测补丁）：首选 configForms 原生句柄
@@ -250,13 +250,13 @@ export function apply(ctx: Context): void {
       rowSeat = true
       onSeat()
       return () => { rowSeat = false }
-    }, 'dsh-manage-sessions: probe top tool seat')
+    }, 'dsh-manage-session: probe top tool seat')
 
     const offMainProbe = slots.inject(MAIN_SEAT, () => {
       mainSeat = true
       onSeat()
       return () => { mainSeat = false }
-    }, 'dsh-manage-sessions: probe main page seat')
+    }, 'dsh-manage-session: probe main page seat')
 
     wired = true
     sync()
@@ -267,7 +267,7 @@ export function apply(ctx: Context): void {
       if (footerOff !== undefined) { const off = footerOff; footerOff = undefined; off() }
       if (topOff !== undefined) { const off = topOff; topOff = undefined; off() }
     }
-  }, 'dsh-manage-sessions: sidebar entry')
+  }, 'dsh-manage-session: sidebar entry')
 
   // 插件族共用设置 tab（dsh-thinking-levels 的顶级「起子插件设置」节声明该子席位）。
   // thinking-levels 缺席时本 inject 静默等待，不阻塞客户端半。
@@ -284,7 +284,7 @@ export function apply(ctx: Context): void {
       scope: bound as StewardCardScope,
       t: props.t,
     }),
-  ), 'dsh-manage-sessions: family settings tab')
+  ), 'dsh-manage-session: family settings tab')
 
   // Plugins 页配置卡（`plugins.bundle.config`，key = 包名）：0.1.7 宿主的 Plugins
   // 页只渲染 key 与包名相等的条目。
@@ -294,7 +294,7 @@ export function apply(ctx: Context): void {
       scope: bound as StewardCardScope,
       t: props.t,
     }),
-  ), 'dsh-manage-sessions: plugins page config card')
+  ), 'dsh-manage-session: plugins page config card')
 
   // 侧栏会话菜单删除臂（按左侧边栏换代识别）：席位自 0.1.7 存在，本行 order=500
   // 落末位；≤0.1.5 菜单写死无席位 → inject 静默等待，删除入口由 DOM 注入臂承担。
@@ -302,7 +302,7 @@ export function apply(ctx: Context): void {
   slots.inject(SESSION_MENU_SEAT, () => slots.register(
     { name: SESSION_MENU_SEAT, id: SESSION_MENU_DELETE_ID, order: SESSION_MENU_DELETE_ORDER, locale: NS },
     StewardDeleteMenuItem,
-  ), 'dsh-manage-sessions: session menu delete row')
+  ), 'dsh-manage-session: session menu delete row')
 
   // 老线（≤0.1.5）菜单无席位——DOM 注入臂补上删除行。
   if (typeof document !== 'undefined') {
@@ -312,7 +312,7 @@ export function apply(ctx: Context): void {
       purge: purgeSessionById,
       isEnabled: probe,
       lang: () => (typeof navigator !== 'undefined' ? navigator.language : undefined),
-    }), 'dsh-manage-sessions: legacy session menu delete injector')
+    }), 'dsh-manage-session: legacy session menu delete injector')
   }
 
   // 家族节宿主选举（次优先级）：宿主 dsh-thinking-levels 缺席时顶上「起子插件
@@ -338,7 +338,7 @@ export function apply(ctx: Context): void {
       }
     }, FAMILY_HOST_GRACE_MS)
     return () => { clearTimeout(timer); if (typeof claimed === 'function') (claimed as () => void)() }
-  }, 'dsh-manage-sessions: family fallback host')
+  }, 'dsh-manage-session: family fallback host')
 }
 
 /** 家族节固定 id（与 thinking-levels / guard 的注册严格一致）。 */
@@ -450,7 +450,7 @@ const TOP_TOOL_SEAT = 'sidebar.panellist'
 /** 主栏整页槽位（keyed）：面板行点击后在此渲染整页内容。 */
 const MAIN_SEAT = 'main'
 /** 管理台页 id（同时作为 `sidebar.panellist` 行的 id 与 `main` 的 key）。 */
-const MANAGER_PANEL_ID = 'manage-sessions'
+const MANAGER_PANEL_ID = 'manage-session'
 
 /**
  * 宿主是否提供顶栏工具槽位（诊断用）：面板行席位 + 主栏整页席位同时被声明才算。
@@ -529,7 +529,7 @@ function mountFooterEntries(
       scope: bound as unknown as StewardCardScope,
       openSession,
     }),
-  ), 'dsh-manage-sessions: sidebar footer entry')
+  ), 'dsh-manage-session: sidebar footer entry')
   return composeDisposers([off])
 }
 
@@ -564,7 +564,7 @@ function mountTopToolEntries(
       slots.inject(MAIN_SEAT, () => slots.register(
         { name: MAIN_SEAT, key: MANAGER_PANEL_ID, locale: NS },
         ManagerPage,
-      ), `dsh-manage-sessions: main page ${MANAGER_PANEL_ID}`),
+      ), `dsh-manage-session: main page ${MANAGER_PANEL_ID}`),
       slots.inject(TOP_TOOL_SEAT, () => slots.register(
         {
           name: TOP_TOOL_SEAT,
@@ -574,7 +574,7 @@ function mountTopToolEntries(
           locale: NS,
         },
         ManagerToolIcon,
-      ), `dsh-manage-sessions: top tool row ${MANAGER_PANEL_ID}`),
+      ), `dsh-manage-session: top tool row ${MANAGER_PANEL_ID}`),
     ]))
 
   return off
