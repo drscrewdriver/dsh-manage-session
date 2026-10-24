@@ -8,3 +8,4 @@ _patch_manage.py
 lib/
 *.tgz
 package-lock.json
+_tmp-*
