@@ -10,38 +10,58 @@
  * 侧栏完全生效——宿主半在成功路径上已同步联动索引）。
  */
 import { createElement, useEffect, useMemo, useState, type ReactElement } from 'react'
-import { callHost, callSteward, type HostSessionItem } from './host-api.ts'
-import { translate, type LocaleKey } from './locales.ts'
+import { callSteward, callStewardItems, type HostSessionItem } from './host-api.ts'
+import { translate, type LocaleKey } from './manage-locales.ts'
 
 /** 管理台字典面（search 子域命名空间的键集）。 */
 export type ManageTranslate = (key: LocaleKey, params?: Record<string, unknown>) => string
 
-/** 样式（幂等注入;类名沿用 dsws_ 前缀,与搜索面板共享视觉语言）。 */
+/** 样式（幂等注入;类名沿用 dmss_ 前缀,与搜索面板共享视觉语言）。 */
 function injectManageStyles(): () => void {
   if (typeof document === 'undefined') return () => {}
-  if (document.querySelector('style[data-plugin-css="dsh-session-steward/manage"]') !== null) return () => {}
+  if (document.querySelector('style[data-plugin-css="dsh-manage-sessions/manage"]') !== null) return () => {}
   const tag = document.createElement('style')
-  tag.dataset.plugin = 'dsh-session-steward'
-  tag.dataset.pluginCss = 'dsh-session-steward/manage'
+  tag.dataset.plugin = 'dsh-manage-sessions'
+  tag.dataset.pluginCss = 'dsh-manage-sessions/manage'
   tag.textContent = `
-.dsws_manageList{flex:1 1 auto;min-height:0;overflow-y:auto;margin:8px 0 0;padding:0 6px 8px}
-.dsws_group{margin-bottom:6px}
-.dsws_groupHead{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--dsw-specific-tip);border-bottom:1px solid var(--dsw-alias-border-l2);cursor:pointer;user-select:none}
-.dsws_groupTitle{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary)}
-.dsws_groupCount{flex:none;color:var(--dsw-alias-label-caption);font-size:11px;font-variant-numeric:tabular-nums}
-.dsws_check{flex:none;display:inline-flex;align-items:center}
-.dsws_check input{width:13px;height:13px;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}
-.dsws_tagArch{flex:none;color:var(--dsw-alias-state-warn-label,var(--dsw-alias-label-caption));font-size:10px;line-height:16px;border:1px solid currentColor;border-radius:999px;padding:0 6px;white-space:nowrap}
-.dsws_batchBar{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-top:1px solid var(--dsw-alias-border-l1)}
-.dsws_batchInfo{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
-.dsws_btnDanger{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}
-.dsws_btnDangerSolid{background:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);color:#fff;font-weight:600}
-.dsws_btnDangerSolid:hover{background:var(--dsw-alias-state-error-primary);filter:brightness(1.08);color:#fff}
-.dsws_manageHint{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;padding:8px 10px 0}
-.dsws_chips{display:flex;align-items:center;gap:6px;padding:8px 10px 0;flex:none;flex-wrap:wrap}
-.dsws_chip{height:24px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;border-radius:999px;padding:0 10px;font-size:12px;font-weight:500;line-height:22px;white-space:nowrap}
-.dsws_chip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dsws_chipActive{background:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
+.dmss_manageRoot{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;padding:0}
+.dmss_manageList{flex:1 1 auto;min-height:0;overflow-y:auto;margin:8px 0 0;padding:0 6px 10px}
+.dmss_group{margin-bottom:10px}
+.dmss_groupHead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--dsw-specific-tip);border-bottom:1px solid var(--dsw-alias-border-l2);cursor:pointer;user-select:none}
+.dmss_groupTitle{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary)}
+.dmss_groupCount{flex:none;color:var(--dsw-alias-label-caption);font-size:11px;font-variant-numeric:tabular-nums}
+/* 会话卡片网格：一行三张（1/3 宽），窄屏降两列 / 单列。 */
+.dmss_grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:8px}
+@media (max-width:1180px){.dmss_grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){.dmss_grid{grid-template-columns:minmax(0,1fr)}}
+/* 卡片本体：标题行 + 工作区元信息两行，整块可点（打开会话）。 */
+.dmss_row{box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0;height:auto;margin:0;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.05));color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer;transition:border-color .14s ease-out,background-color .14s ease-out}
+.dmss_row:hover{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-interactive-bg-hover)}
+.dmss_rowTitle{display:flex;align-items:center;gap:6px;min-width:0;width:100%}
+.dmss_titleText{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px;font-weight:500}
+.dmss_tag{flex:none;color:var(--dsw-alias-label-caption);font-size:11px;line-height:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dmss_meta{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}
+.dmss_check{flex:none;display:inline-flex;align-items:center}
+.dmss_check input{width:13px;height:13px;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}
+.dmss_tagArch{flex:none;color:var(--dsw-alias-state-warn-label,var(--dsw-alias-label-caption));font-size:10px;line-height:16px;border:1px solid currentColor;border-radius:999px;padding:0 6px;white-space:nowrap}
+.dmss_batchBar{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-top:1px solid var(--dsw-alias-border-l1)}
+.dmss_batchInfo{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
+.dmss_actBtn{height:26px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:8px;padding:0 10px;font-size:12px;line-height:24px;white-space:nowrap}
+.dmss_actBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dmss_actBtn:disabled{cursor:not-allowed;opacity:.5}
+.dmss_btnDanger{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}
+.dmss_btnDangerSolid{background:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);color:#fff;font-weight:600}
+.dmss_btnDangerSolid:hover{background:var(--dsw-alias-state-error-primary);filter:brightness(1.08);color:#fff}
+.dmss_manageHint{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;padding:8px 10px 0}
+.dmss_chips{display:flex;align-items:center;gap:6px;padding:8px 10px 0;flex:none;flex-wrap:wrap}
+.dmss_chip{height:24px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;border-radius:999px;padding:0 10px;font-size:12px;font-weight:500;line-height:22px;white-space:nowrap}
+.dmss_chip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dmss_chipActive{background:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
+.dmss_search{height:24px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 8px;font-size:12px;line-height:22px}
+.dmss_search:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+.dmss_status{color:var(--dsw-alias-label-tertiary);padding:10px 8px 8px;font-size:12px;line-height:18px}
+.dmss_empty{color:var(--dsw-alias-label-tertiary);padding:10px 8px 8px;font-size:12px;line-height:18px}
+.dmss_error{color:var(--dsw-alias-state-error-primary);padding:8px;font-size:12px;line-height:18px}
 `
   document.head.appendChild(tag)
   return () => {
@@ -94,7 +114,7 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
   useEffect(() => {
     if (sessions !== null) return
     let cancelled = false
-    callHost<HostSessionItem>('list-sessions', {}).then((res) => {
+    callStewardItems<HostSessionItem>('session-catalog', {}).then((res) => {
       if (cancelled) return
       if (res.ok) { setSessions(res.items); setSelected(new Set()); setConfirmPurge(false) }
       else setSessionsError(res.error ?? '读取会话列表失败')
@@ -230,92 +250,92 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
   useEffect(() => { injectManageStyles() }, [])
 
   if (sessionsError !== null) {
-    return createElement('div', { className: 'dsws_error' }, sessionsError)
+    return createElement('div', { className: 'dmss_error' }, sessionsError)
   }
   if (sessions === null) {
-    return createElement('div', { className: 'dsws_status' }, translate(t, 'panel.loadingSessions'))
+    return createElement('div', { className: 'dmss_status' }, translate(t, 'panel.loadingSessions'))
   }
   if (sessions !== null && manageGroups.length === 0 && (workspaceFilter !== '' || textFilter.trim() !== '' || domain !== 'all' || favoritesOnly)) {
-    return createElement('div', { className: 'dsws_empty' }, translate(t, 'panel.noMatch'))
+    return createElement('div', { className: 'dmss_empty' }, translate(t, 'panel.noMatch'))
   }
   if (manageGroups.length === 0) {
-    return createElement('div', { className: 'dsws_empty' }, translate(t, 'panel.noSessions'))
+    return createElement('div', { className: 'dmss_empty' }, translate(t, 'panel.noSessions'))
   }
 
   const children: ReactElement[] = [
     createElement('input', {
       key: 'search',
-      className: 'dsws_search',
+      className: 'dmss_search',
       style: { margin: '8px 10px 0', flex: 'none' },
       type: 'text',
       placeholder: translate(t, 'manage.search'),
       value: textFilter,
       onChange: (e: { target: { value: string } }) => { setTextFilter(e.target.value) },
     }),
-    createElement('div', { key: 'wsChips', className: 'dsws_chips', role: 'group', 'aria-label': translate(t, 'workspace.label') }, [
+    createElement('div', { key: 'wsChips', className: 'dmss_chips', role: 'group', 'aria-label': translate(t, 'workspace.label') }, [
       createElement('span', { key: 'label', style: { flex: 'none', fontSize: '12px', color: 'var(--dsw-alias-label-caption)' } }, translate(t, 'workspace.label')),
       createElement('button', {
         key: 'all',
         type: 'button',
-        className: `dsws_chip${workspaceFilter === '' ? ' dsws_chipActive' : ''}`,
+        className: `dmss_chip${workspaceFilter === '' ? ' dmss_chipActive' : ''}`,
         'aria-pressed': workspaceFilter === '',
         onClick: () => { setWorkspaceFilter('') },
       }, `${translate(t, 'domain.all')} (${sessions?.length ?? 0})`),
       ...visibleChips.chips.map(chip => createElement('button', {
         key: chip.cwd === '' ? '(nocwd)' : chip.cwd,
         type: 'button',
-        className: `dsws_chip${workspaceFilter === chip.cwd ? ' dsws_chipActive' : ''}`,
+        className: `dmss_chip${workspaceFilter === chip.cwd ? ' dmss_chipActive' : ''}`,
         'aria-pressed': workspaceFilter === chip.cwd,
         onClick: () => { setWorkspaceFilter(current => (current === chip.cwd ? '' : chip.cwd)) },
       }, `${chip.label} (${chip.count})`)),
       visibleChips.hidden > 0 && createElement('button', {
-        key: 'more', type: 'button', className: 'dsws_chip',
+        key: 'more', type: 'button', className: 'dmss_chip',
         onClick: () => { setShowAllWorkspaces(true) },
       }, translate(t, 'workspace.more', { n: visibleChips.hidden })),
       showAllWorkspaces && workspaceChips.length > 8 && createElement('button', {
-        key: 'less', type: 'button', className: 'dsws_chip',
+        key: 'less', type: 'button', className: 'dmss_chip',
         onClick: () => { setShowAllWorkspaces(false) },
       }, translate(t, 'workspace.less')),
       createElement('span', { key: 'gap', style: { flex: 1 } }),
       manageGroups.length > 1 && createElement('button', {
-        key: 'collapseAll', type: 'button', className: 'dsws_chip',
+        key: 'collapseAll', type: 'button', className: 'dmss_chip',
         onClick: () => { setAllCollapsed(true) },
       }, translate(t, 'group.collapseAll')),
       manageGroups.length > 1 && createElement('button', {
-        key: 'expandAll', type: 'button', className: 'dsws_chip',
+        key: 'expandAll', type: 'button', className: 'dmss_chip',
         onClick: () => { setAllCollapsed(false) },
       }, translate(t, 'group.expandAll')),
     ]),
-    createElement('div', { key: 'chips', className: 'dsws_chips', role: 'group', 'aria-label': translate(t, 'domain.all') }, [
+    createElement('div', { key: 'chips', className: 'dmss_chips', role: 'group', 'aria-label': translate(t, 'domain.all') }, [
       ...(['all', 'active', 'archived'] as const).map(id => createElement('button', {
         key: id,
         type: 'button',
-        className: `dsws_chip${domain === id ? ' dsws_chipActive' : ''}`,
+        className: `dmss_chip${domain === id ? ' dmss_chipActive' : ''}`,
         'aria-pressed': domain === id,
         onClick: () => { setDomain(id) },
       }, translate(t, `domain.${id}` as LocaleKey))),
       createElement('button', {
         key: 'favorites',
         type: 'button',
-        className: `dsws_chip${favoritesOnly ? ' dsws_chipActive' : ''}`,
+        className: `dmss_chip${favoritesOnly ? ' dmss_chipActive' : ''}`,
         'aria-pressed': favoritesOnly,
         onClick: () => { setFavoritesOnly(v => !v) },
       }, `★ ${translate(t, 'filter.favorites')}`),
     ]),
-    createElement('div', { key: 'hint', className: 'dsws_manageHint' }, [
+    createElement('div', { key: 'hint', className: 'dmss_manageHint' }, [
       translate(t, 'manage.hint'),
       createElement('span', { key: 'sep', style: { display: 'block', marginTop: '2px' } }, translate(t, 'manage.restartHint')),
     ]),
-    createElement('div', { key: 'groups', className: 'dsws_manageList' },
-      ...manageGroups.map(group => createElement('div', { key: group.cwd === '' ? '(nocwd)' : group.cwd, className: 'dsws_group' }, [
+    createElement('div', { key: 'groups', className: 'dmss_manageList' },
+      ...manageGroups.map(group => createElement('div', { key: group.cwd === '' ? '(nocwd)' : group.cwd, className: 'dmss_group' }, [
         createElement('div', {
           key: 'head',
-          className: 'dsws_groupHead',
+          className: 'dmss_groupHead',
           title: translate(t, 'group.collapse'),
           onClick: () => { toggleCollapsed(group.cwd) },
         }, [
           createElement('span', { key: 'chev', style: { flex: 'none', fontSize: '10px', color: 'var(--dsw-alias-label-caption)', transition: 'transform .15s', transform: collapsedGroups.has(group.cwd) ? 'rotate(0deg)' : 'rotate(90deg)' } }, '▶'),
-          createElement('span', { key: 'check', className: 'dsws_check' },
+          createElement('span', { key: 'check', className: 'dmss_check' },
             createElement('input', {
               type: 'checkbox',
               checked: group.items.length > 0 && group.items.every(item => selected.has(item.sessionId)),
@@ -323,17 +343,23 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
               onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
               title: translate(t, 'manage.selectGroup'),
             })),
-          createElement('span', { key: 'title', className: 'dsws_groupTitle' }, group.cwd === '' ? translate(t, 'manage.group.nocwd') : group.cwd),
-          createElement('span', { key: 'count', className: 'dsws_groupCount' }, `${group.items.filter(item => matchesText(item)).length}/${group.items.length}`),
+          createElement('span', { key: 'title', className: 'dmss_groupTitle' }, group.cwd === '' ? translate(t, 'manage.group.nocwd') : group.cwd),
+          createElement('span', { key: 'count', className: 'dmss_groupCount' }, `${group.items.filter(item => matchesText(item)).length}/${group.items.length}`),
         ]),
-        ...(collapsedGroups.has(group.cwd) ? [] : group.items.filter(item => matchesText(item)).map(item => createElement('button', {
+        ...(collapsedGroups.has(group.cwd) ? [] : [createElement('div', {
+          key: 'grid',
+          className: 'dmss_grid',
+        }, group.items.filter(item => matchesText(item)).map(item => createElement('div', {
           key: item.sessionId,
-          type: 'button',
-          className: 'dsws_row',
+          role: 'button',
+          tabIndex: 0,
+          className: 'dmss_row',
+          title: item.title || translate(t, 'panel.untitled'),
           onClick: () => { open(item.sessionId) },
+          onKeyDown: (e: { key: string }) => { if (e.key === 'Enter' || e.key === ' ') open(item.sessionId) },
         }, [
-          createElement('span', { key: 'line', className: 'dsws_rowTitle' }, [
-            createElement('span', { key: 'check', className: 'dsws_check' },
+          createElement('span', { key: 'line', className: 'dmss_rowTitle' }, [
+            createElement('span', { key: 'check', className: 'dmss_check' },
               createElement('input', {
                 type: 'checkbox',
                 checked: selected.has(item.sessionId),
@@ -343,46 +369,46 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
             createElement('button', {
               key: 'star',
               type: 'button',
-              className: 'dsws_check',
+              className: 'dmss_check',
               title: translate(t, favorites.has(item.sessionId) ? 'star.on' : 'star.off'),
               style: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '13px', lineHeight: 1, padding: '0 2px', color: favorites.has(item.sessionId) ? 'var(--dsw-alias-state-warn-label, #d97706)' : 'var(--dsw-alias-label-caption)' },
               onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation(); toggleFavorite(item.sessionId) },
             }, favorites.has(item.sessionId) ? '★' : '☆'),
-            createElement('span', { key: 'x', className: 'dsws_titleText' }, item.title || translate(t, 'panel.untitled')),
-            item.archived === true && createElement('span', { key: 'arch', className: 'dsws_tagArch' }, translate(t, 'tag.archived')),
-            createElement('span', { key: 'tag', className: 'dsws_tag' }, fmtTime(item.updatedAt)),
+            createElement('span', { key: 'x', className: 'dmss_titleText' }, item.title || translate(t, 'panel.untitled')),
+            item.archived === true && createElement('span', { key: 'arch', className: 'dmss_tagArch' }, translate(t, 'tag.archived')),
+            createElement('span', { key: 'tag', className: 'dmss_tag' }, fmtTime(item.updatedAt)),
           ]),
-          createElement('span', { key: 'meta', className: 'dsws_meta' }, item.cwd),
-        ]))),
+          createElement('span', { key: 'meta', className: 'dmss_meta' }, item.cwd),
+        ])))]),
       ])),
     ),
   ]
 
   if (selected.size > 0) {
-    children.push(createElement('div', { key: 'batch', className: 'dsws_batchBar' }, [
-      createElement('span', { key: 'info', className: 'dsws_batchInfo' }, batch.message !== ''
+    children.push(createElement('div', { key: 'batch', className: 'dmss_batchBar' }, [
+      createElement('span', { key: 'info', className: 'dmss_batchInfo' }, batch.message !== ''
         ? batch.message
         : translate(t, 'manage.selected', { n: selected.size })),
       createElement('button', {
-        key: 'archive', type: 'button', className: 'dsws_actBtn', disabled: batch.busy,
+        key: 'archive', type: 'button', className: 'dmss_actBtn', disabled: batch.busy,
         onClick: () => { runBatch('archive') },
       }, translate(t, 'manage.batch.archive')),
       createElement('button', {
-        key: 'unarchive', type: 'button', className: 'dsws_actBtn', disabled: batch.busy,
+        key: 'unarchive', type: 'button', className: 'dmss_actBtn', disabled: batch.busy,
         onClick: () => { runBatch('unarchive') },
       }, translate(t, 'manage.batch.unarchive')),
       createElement('button', {
         key: 'purge', type: 'button',
         // 两步确认的第二步：红底白字实心（对齐宿主原生危险按钮，用户定标
         // 2026-10-20）——白字不赌主题令牌（tip 色在亮色主题下对比度不足）。
-        className: `dsws_actBtn${confirmPurge ? ' dsws_btnDangerSolid' : ' dsws_btnDanger'}`, disabled: batch.busy,
+        className: `dmss_actBtn${confirmPurge ? ' dmss_btnDangerSolid' : ' dmss_btnDanger'}`, disabled: batch.busy,
         onClick: () => { runBatch('purge') },
       }, confirmPurge ? translate(t, 'manage.batch.confirm') : translate(t, 'manage.batch.delete')),
-      batch.busy && createElement('span', { key: 'busy', className: 'dsws_batchInfo' }, translate(t, 'manage.batch.working')),
+      batch.busy && createElement('span', { key: 'busy', className: 'dmss_batchInfo' }, translate(t, 'manage.batch.working')),
     ]))
   }
 
-  return createElement('div', { className: 'dsws_manageRoot', style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } }, children)
+  return createElement('div', { className: 'dmss_manageRoot', style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } }, children)
 }
 
 /** Format an epoch-ms timestamp: today → HH:mm, else YYYY-MM-DD HH:mm. */

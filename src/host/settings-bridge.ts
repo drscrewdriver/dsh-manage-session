@@ -6,8 +6,8 @@
  * 字段里、client configForms 原生可用 —— 本桥在那些线上解析为 undefined，
  * describe/mutate 方法降级为「显式拒绝写」。
  *
- * 两个命名空间**并存且互不迁移**（config.ts 的存储键稳定承诺）：
- * `session-steward`（管家字段）与 `switch-search`（搜索字段）。schema 必须
+ * 设置命名空间只有一个：`manage-sessions`（搜索子域已拆回 dsh-search-index，
+ * 搜索字段与命名空间不在本包）。schema 必须
  * **纯 plain**（不 withVolatile）—— volatile 节点会被 legacy register 拒收
  * （`$.enabled expected boolean`，TL beta.18 教训）。
  *
@@ -19,8 +19,6 @@ import z from '@deepseek-ai/schemastery'
 import {
   DEFAULT_CONFIG,
   STEWARD_SETTINGS_NAMESPACE,
-  SWITCH_DEFAULT_CONFIG,
-  SWITCH_SEARCH_SETTINGS_NAMESPACE,
 } from '../config.ts'
 
 /** 老宿主 settings 服务面（结构化镜像，绝不 value-import 官方包）。 */
@@ -38,25 +36,14 @@ export interface LegacySettingsBridge {
   update(ns: string, patch: Record<string, unknown>): Promise<void>
 }
 
-const SHARED_LEASE = Symbol.for('dsh-session-steward/legacy-settings-bridge')
+const SHARED_LEASE = Symbol.for('dsh-manage-sessions/legacy-settings-bridge')
 
-/** 管家命名空间 schema（纯 plain，无 volatile —— 老线 register 拒收 volatile 节点）。 */
+/** 管理命名空间 schema（纯 plain，无 volatile —— 老线 register 拒收 volatile 节点）。 */
 const StewardNsSchema = z.object({
   enabled: z.boolean().default(true),
   historyFiles: z.boolean().default(true),
   healthCheck: z.boolean().default(true),
-  search: z.boolean().default(true),
   directDelete: z.boolean().default(false),
-})
-
-/** 搜索命名空间 schema（同上；存储键与 config.ts 承诺一致）。 */
-const SwitchNsSchema = z.object({
-  enabled: z.boolean().default(true),
-  defaultMode: z.union(['title', 'content']).default('title'),
-  autoSync: z.boolean().default(true),
-  syncIntervalMs: z.number().default(30_000),
-  archiveKeep: z.number().default(2),
-  indexDir: z.string().default(''),
 })
 
 /** settings.get 返回值是否像一份文档（老宿主对未写过的 ns 可能回 undefined）。 */
@@ -87,7 +74,6 @@ export function installLegacySettingsBridge(ctx: unknown): BridgeState {
         const carrier = settings as LegacySettingsFace & { [SHARED_LEASE]?: true }
         if (carrier[SHARED_LEASE] !== true) {
           settings.register(STEWARD_SETTINGS_NAMESPACE, StewardNsSchema)
-          settings.register(SWITCH_SEARCH_SETTINGS_NAMESPACE, SwitchNsSchema)
           try {
             Object.defineProperty(carrier, SHARED_LEASE, {
               configurable: false,
@@ -111,9 +97,9 @@ export function installLegacySettingsBridge(ctx: unknown): BridgeState {
             await settings.update?.(ns, patch)
           },
         }
-        console.log(`[dsh-session-steward] legacy settings bridge engaged (${STEWARD_SETTINGS_NAMESPACE} + ${SWITCH_SEARCH_SETTINGS_NAMESPACE})`)
+
       } catch (err) {
-        console.log(`[dsh-session-steward] legacy settings bridge FAILED (cards degrade to read-only): ${String(err instanceof Error ? err.message : err)}`)
+        console.log(`[dsh-manage-sessions] legacy settings bridge FAILED (cards degrade to read-only): ${String(err instanceof Error ? err.message : err)}`)
       }
     })
   } catch {
@@ -135,34 +121,13 @@ const FIELD_VALIDATORS: Record<string, Record<string, (v: unknown) => FieldVerdi
     enabled: asBoolean,
     historyFiles: asBoolean,
     healthCheck: asBoolean,
-    search: asBoolean,
     directDelete: asBoolean,
-  },
-  [SWITCH_SEARCH_SETTINGS_NAMESPACE]: {
-    enabled: asBoolean,
-    defaultMode: (v) => (v === 'title' || v === 'content' ? { ok: true, value: v } : { ok: false, error: 'defaultMode 只接受 title|content' }),
-    autoSync: asBoolean,
-    syncIntervalMs: (v) => {
-      if (typeof v !== 'number' || !Number.isFinite(v)) return { ok: false, error: 'syncIntervalMs 必须是有限数字' }
-      return { ok: true, value: Math.min(3_600_000, Math.max(5_000, Math.round(v))) }
-    },
-    archiveKeep: (v) => {
-      if (typeof v !== 'number' || !Number.isInteger(v)) return { ok: false, error: 'archiveKeep 必须是整数' }
-      return { ok: true, value: Math.min(20, Math.max(0, v)) }
-    },
-    indexDir: (v) => {
-      if (typeof v !== 'string') return { ok: false, error: 'indexDir 必须是字符串' }
-      const trimmed = v.trim()
-      if (trimmed.length > 500) return { ok: false, error: 'indexDir 过长（>500 字符）' }
-      return { ok: true, value: trimmed }
-    },
   },
 }
 
 /** 两份命名空间文档（describe/mutate 响应的统一形状）。 */
 export interface BridgeNamespaces {
   [STEWARD_SETTINGS_NAMESPACE]: Record<string, unknown>
-  [SWITCH_SEARCH_SETTINGS_NAMESPACE]: Record<string, unknown>
 }
 
 /** 桥运行时状态（revision 随每次成功写自增，客户端据此识别权威新值）。 */
@@ -177,10 +142,9 @@ export function describeNamespaces(state: BridgeState): BridgeNamespaces {
   if (bridge !== undefined) {
     return {
       [STEWARD_SETTINGS_NAMESPACE]: { ...DEFAULT_CONFIG, ...(bridge.get(STEWARD_SETTINGS_NAMESPACE) ?? {}) },
-      [SWITCH_SEARCH_SETTINGS_NAMESPACE]: { ...SWITCH_DEFAULT_CONFIG, ...(bridge.get(SWITCH_SEARCH_SETTINGS_NAMESPACE) ?? {}) },
     }
   }
-  return { [STEWARD_SETTINGS_NAMESPACE]: {}, [SWITCH_SEARCH_SETTINGS_NAMESPACE]: {} }
+  return { [STEWARD_SETTINGS_NAMESPACE]: {} }
 }
 
 /**
@@ -188,23 +152,17 @@ export function describeNamespaces(state: BridgeState): BridgeNamespaces {
  * 服务，而组合入口 config 是静态缺省——不叠加则开关「拨得动、不生效」。
  * 与 describe 不同：**不铺缺省**，只回两 ns 的原始已写键（盘上 settings.yaml
  * 实测只含被拨过的键，未写键缺席→自然回退组合 config）。
- * 两 ns 分开返回（不 flatten）：`enabled` 在两 ns 都有——合并包里它是同一
- * master（config.ts 注），但 legacy 分家存，flatten 会互相串改；current()
- * 按字段取权威 ns（master 类字段只认 session-steward）。桥未咬合恒空=零叠加。
  */
 export interface BridgeOverlayDocs {
-  /** session-steward ns 原始已写文档（桥未咬合时 = {}）。 */
+  /** manage-sessions ns 原始已写文档（桥未咬合时 = {}）。 */
   steward: Record<string, unknown>
-  /** switch-search ns 原始已写文档（桥未咬合时 = {}）。 */
-  search: Record<string, unknown>
 }
 
 export function bridgeOverlay(state: BridgeState): BridgeOverlayDocs {
   const { bridge } = state
-  if (bridge === undefined) return { steward: {}, search: {} }
+  if (bridge === undefined) return { steward: {} }
   return {
     steward: bridge.get(STEWARD_SETTINGS_NAMESPACE) ?? {},
-    search: bridge.get(SWITCH_SEARCH_SETTINGS_NAMESPACE) ?? {},
   }
 }
 

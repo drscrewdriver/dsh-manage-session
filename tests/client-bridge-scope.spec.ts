@@ -48,8 +48,8 @@ describe('bridge scope（客户端半）', () => {
         writable: true,
         revision: 4,
         namespaces: {
-          'session-steward': { enabled: false, historyFiles: true, healthCheck: true, search: true },
-          'switch-search': { enabled: true, defaultMode: 'content', autoSync: true, syncIntervalMs: 30_000, archiveKeep: 2, indexDir: '' },
+          'manage-sessions': { enabled: false, historyFiles: true, healthCheck: true, search: true },
+          'manage-sessions-search': { enabled: true, defaultMode: 'content', autoSync: true, syncIntervalMs: 30_000, archiveKeep: 2, indexDir: '' },
         },
       },
     }])
@@ -77,8 +77,8 @@ describe('bridge scope（客户端半）', () => {
           writable: true,
           revision: 1,
           namespaces: {
-            'session-steward': { enabled: true, historyFiles: true, healthCheck: true, search: true },
-            'switch-search': {},
+            'manage-sessions': { enabled: true, historyFiles: true, healthCheck: true, search: true },
+            'manage-sessions-search': {},
           },
         },
       },
@@ -87,8 +87,8 @@ describe('bridge scope（客户端半）', () => {
           ok: true,
           revision: 2,
           namespaces: {
-            'session-steward': { enabled: false, historyFiles: true, healthCheck: true, search: true },
-            'switch-search': {},
+            'manage-sessions': { enabled: false, historyFiles: true, healthCheck: true, search: true },
+            'manage-sessions-search': {},
           },
         },
       },
@@ -102,8 +102,8 @@ describe('bridge scope（客户端半）', () => {
     })
     expect(scope.getSnapshot().value?.enabled).toBe(true)
     await scope.set('enabled', false)
-    expect(calls[1]?.url).toBe('/session-steward/api/settings-mutate')
-    expect(calls[1]?.body).toMatchObject({ ns: 'session-steward', fields: { enabled: false } })
+    expect(calls[1]?.url).toBe('/manage-sessions/api/settings-mutate')
+    expect(calls[1]?.body).toMatchObject({ ns: 'manage-sessions', fields: { enabled: false } })
     expect(scope.getSnapshot().value?.enabled).toBe(false)
     expect(scope.getSnapshot().revision).toBe(2)
   })
@@ -117,8 +117,8 @@ describe('bridge scope（客户端半）', () => {
           writable: true,
           revision: 1,
           namespaces: {
-            'session-steward': { enabled: true, historyFiles: true, healthCheck: true, search: true },
-            'switch-search': {},
+            'manage-sessions': { enabled: true, historyFiles: true, healthCheck: true, search: true },
+            'manage-sessions-search': {},
           },
         },
       },
@@ -138,7 +138,7 @@ describe('bridge scope（客户端半）', () => {
   it('describe 失败：unavailable 降级 + 不可写', async () => {
     const bridge = await freshBridge()
     stubFetch([{ body: { ok: false, error: 'forbidden' } }])
-    const scope = bridge.searchBridgeScope()
+    const scope = bridge.stewardBridgeScope()
     await new Promise<void>((resolve) => {
       const unsubscribe = scope.subscribe(() => {
         unsubscribe()
@@ -159,31 +159,4 @@ describe('bridge scope（客户端半）', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('两个视图共享一次 describe（单 fetch 供双卡）', async () => {
-    const bridge = await freshBridge()
-    const { calls } = stubFetch([{
-      body: {
-        ok: true,
-        writable: true,
-        revision: 9,
-        namespaces: {
-          'session-steward': { enabled: true, historyFiles: true, healthCheck: true, search: true },
-          'switch-search': { enabled: true, defaultMode: 'title', autoSync: true, syncIntervalMs: 30_000, archiveKeep: 2, indexDir: '' },
-        },
-      },
-    }])
-    const steward = bridge.stewardBridgeScope()
-    const search = bridge.searchBridgeScope()
-    await new Promise<void>((resolve) => {
-      const unsubscribeSteward = steward.subscribe(() => {
-        unsubscribeSteward()
-        resolve()
-      })
-    })
-    const unsubscribeSearch = search.subscribe(() => {})
-    unsubscribeSearch()
-    expect(calls.filter((c) => c.url.endsWith('settings-describe'))).toHaveLength(1)
-    expect(search.getSnapshot().status).toBe('ready')
-    expect(search.getSnapshot().value?.defaultMode).toBe('title')
-  })
 })

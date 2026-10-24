@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Sitzungs-Verwalter",
-    "description": "Sitzungsverlaufsdateien (Archivansicht und Bereinigung) und Sitzungs-Health-Check (Untersuchung → Rezept → Entlassung); keine Eingriffe in Sitzungsprotokolle, nur umkehrbare Vorgänge."
+    "title": "Sitzungsmanager",
+    "description": "Eine Konsole für aktive und archivierte Sitzungen (Ansehen, Filtern, Favoriten, Archivieren/Zurückholen, Sammelbereinigung, Löschen) plus Sitzungs-Check. Der Eintrag nutzt bevorzugt den oberen Werkzeugplatz der Seitenleiste, sonst den Fußbereich. Keine eigene Suche, keine DRS-Abhängigkeit."
   }
 }

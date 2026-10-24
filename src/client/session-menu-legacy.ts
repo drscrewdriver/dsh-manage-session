@@ -14,7 +14,7 @@
  * 纪律：全程 best-effort、任何异常吞掉绝不影响宿主；仅在 directDelete=true 时
  * 注入（缺省关，破坏性入口不默认铺开）。fiber 取 id 失败即放弃该行（不伪造）。
  */
-import { callHostAny, callSteward, type HostIndexStatus } from './search/host-api.ts'
+import { callSteward, probeDirectDelete } from './host-api.ts'
 import { dictionaries, type LocaleKey } from './locales.ts'
 
 /** dedup 标记（与 session-menu.tsx 席位行同串）。 */
@@ -233,8 +233,7 @@ export function makeDirectDeleteProbe(): () => Promise<boolean> {
     if (Date.now() - at < 30_000) return cached
     at = Date.now()
     try {
-      const res = await callHostAny<HostIndexStatus>('index-status', {})
-      cached = (res as Partial<HostIndexStatus>).directDelete === true
+      cached = (await probeDirectDelete()) === true
     } catch {
       cached = false
     }

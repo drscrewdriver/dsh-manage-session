@@ -1,7 +1,7 @@
 /**
  * 替换官方 workspace 注册表的管家子类(P1 服务替换,AM 架构轻量版)。
  *
- * cordis.patch.yml 禁用官方 `workspace` 行并插入本类(`dsh-session-steward/registry`):
+ * cordis.patch.yml 禁用官方 `workspace` 行并插入本类(`dsh-manage-sessions/registry`):
  * - 归档/取消归档/记账完全继承官方行为(setState 自带持久化,免重启);
  * - 覆写 sessionKnown / indexHeader 挂**墓碑**:本进程已物理删除的会话不被
  *   stale `persistence.list()` 重新编入索引、不被重新写回归档集合;
@@ -82,7 +82,7 @@ export const StewardWorkspaceRegistry = class extends (WorkspaceRegistry as unkn
   private log(message: string): void {
     try {
       (this.ctx as unknown as { logger?: { info?: (m: string) => void; warn?: (m: string) => void } })
-        .logger?.info?.(`[session-steward] ${message}`)
+        .logger?.info?.(`[manage-sessions] ${message}`)
     } catch { /* 日志绝不破坏宿主 */ }
   }
 

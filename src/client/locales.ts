@@ -1,7 +1,7 @@
 /**
- * 会话管家的多语言文案（zh 为键集基准，另含 en 与 ja/ko/fr/de/it/ru/es）。
+ * 会话管理的多语言文案（zh 为键集基准，另含 en 与 ja/ko/fr/de/it/ru/es）。
  *
- * 硬约束：本文件**不得出现「搜索」二字** —— 搜索/索引属 dsh-search-index 那一片。
+ * 硬约束：本文件**不得出现「搜索」二字** —— 搜索/索引属 dsh-manage-sessions-search 那一片。
  * 文案走 `translate(t, key, params)`，字典由官方 locale 服务注册（缺失时回退内置 zh）。
  */
 
@@ -10,9 +10,9 @@ export type LocaleKey = keyof typeof zh
 
 /** 简体中文（内置回退字典）。 */
 export const zh = {
-  'card.title': '会话管家',
+  'card.title': '会话管理',
   'card.desc': '历史文件 · 健康检查',
-  'card.enabled': '启用会话管家',
+  'card.enabled': '启用会话管理',
   'card.enabled.desc': '关闭后不注册任何接口，侧边栏入口整体消失。',
   'card.history': '会话历史文件',
   'card.history.desc': '归档浏览与清理（养老院）。关闭后不注册历史接口、不渲染该页签。',
@@ -27,7 +27,7 @@ export const zh = {
 
   'family.title': '起子插件设置',
 
-  'panel.title': '会话管家',
+  'panel.title': '会话管理',
   'panel.tab.history': '养老院',
   'panel.tab.health': '体检',
   'panel.tab.manage': '管理',
@@ -115,9 +115,9 @@ export const zh = {
 
 /** English dictionary (same keys). */
 export const en: Record<LocaleKey, string> = {
-  'card.title': 'Session Steward',
+  'card.title': 'Session Manager',
   'card.desc': 'History files · Health check',
-  'card.enabled': 'Enable Session Steward',
+  'card.enabled': 'Enable Session Manager',
   'card.enabled.desc': 'When off, no API is registered and the sidebar entry disappears.',
   'card.history': 'Session history files',
   'card.history.desc': 'Archive browsing and cleanup (Retirement Home). When off, history routes and the tab are gone.',
@@ -131,7 +131,7 @@ export const en: Record<LocaleKey, string> = {
   'card.unavailable': 'Settings service unavailable; configuration cannot be read.',
   'family.title': 'Screwdriver plugin settings',
 
-  'panel.title': 'Session Steward',
+  'panel.title': 'Session Manager',
   'panel.tab.history': 'Retirement Home',
   'panel.tab.health': 'Checkup',
   'panel.tab.manage': 'Manage',
@@ -214,9 +214,9 @@ export const en: Record<LocaleKey, string> = {
 
 /** 日本語辞書（zh のキー集合に対し完全性を検査）。 */
 export const ja: Partial<Record<LocaleKey, string>> = {
-  'card.title': 'セッションスチュワード',
+  'card.title': 'セッションマネージャー',
   'card.desc': '履歴ファイル · ヘルスチェック',
-  'card.enabled': 'セッションスチュワードを有効化',
+  'card.enabled': 'セッションマネージャーを有効化',
   'card.enabled.desc': 'オフにすると API を一切登録せず、サイドバーの入口も消えます。',
   'card.history': 'セッション履歴ファイル',
   'card.history.desc': 'アーカイブの閲覧とクリーンアップ（老人ホーム）。オフにすると履歴 API を登録せず、このタブも描画しません。',
@@ -229,7 +229,7 @@ export const ja: Partial<Record<LocaleKey, string>> = {
   'card.readonly': 'このセッションでは設定を変更できません（読み取り専用マウント）。',
   'card.unavailable': '設定サービスが利用できず、構成を読み取れません。',
   'family.title': 'スクリュードライバー プラグイン設定',
-  'panel.title': 'セッションスチュワード',
+  'panel.title': 'セッションマネージャー',
   'panel.tab.history': '老人ホーム',
   'panel.tab.health': '健診',
   'panel.close': '閉じる',
@@ -306,9 +306,9 @@ export const ja: Partial<Record<LocaleKey, string>> = {
 
 /** 한국어 사전 (zh 키 집합에 대해 완전성 검사). */
 export const ko: Partial<Record<LocaleKey, string>> = {
-  'card.title': '세션 스튜어드',
+  'card.title': '세션 매니저',
   'card.desc': '기록 파일 · 건강 점검',
-  'card.enabled': '세션 스튜어드 활성화',
+  'card.enabled': '세션 매니저 활성화',
   'card.enabled.desc': '끄면 어떤 API도 등록하지 않고 사이드바 항목이 통째로 사라집니다.',
   'card.history': '세션 기록 파일',
   'card.history.desc': '아카이브 탐색 및 정리(요양소). 끄면 기록 API를 등록하지 않고 이 탭을 렌더링하지 않습니다.',
@@ -321,7 +321,7 @@ export const ko: Partial<Record<LocaleKey, string>> = {
   'card.readonly': '이 세션에서는 설정을 수정할 수 없습니다(읽기 전용 마운트).',
   'card.unavailable': '설정 서비스를 사용할 수 없어 구성을 읽을 수 없습니다.',
   'family.title': '스크루드라이버 플러그인 설정',
-  'panel.title': '세션 스튜어드',
+  'panel.title': '세션 매니저',
   'panel.tab.history': '요양소',
   'panel.tab.health': '진료',
   'panel.close': '닫기',
@@ -398,7 +398,7 @@ export const ko: Partial<Record<LocaleKey, string>> = {
 
 /** Dictionnaire français, vérifié complet contre le jeu de clés zh. */
 export const fr: Partial<Record<LocaleKey, string>> = {
-  'card.title': 'Intendant de session',
+  'card.title': 'Gestionnaire de sessions',
   'card.desc': 'Fichiers d’historique · Contrôle de santé',
   'card.enabled': 'Activer l’intendant de session',
   'card.enabled.desc': 'Désactivé, aucune API n’est enregistrée et l’entrée de la barre latérale disparaît.',
@@ -413,7 +413,7 @@ export const fr: Partial<Record<LocaleKey, string>> = {
   'card.readonly': 'Cette session ne peut pas modifier les réglages (montage en lecture seule).',
   'card.unavailable': 'Service de réglages indisponible ; configuration illisible.',
   'family.title': 'Réglages du plugin Screwdriver',
-  'panel.title': 'Intendant de session',
+  'panel.title': 'Gestionnaire de sessions',
   'panel.tab.history': 'Maison de retraite',
   'panel.tab.health': 'Examen',
   'panel.close': 'Fermer',
@@ -490,9 +490,9 @@ export const fr: Partial<Record<LocaleKey, string>> = {
 
 /** Deutsches Wörterbuch, vollständig gegen den zh-Schlüsselsatz geprüft. */
 export const de: Partial<Record<LocaleKey, string>> = {
-  'card.title': 'Sitzungs-Verwalter',
+  'card.title': 'Sitzungsmanager',
   'card.desc': 'Verlaufsdateien · Health-Check',
-  'card.enabled': 'Sitzungs-Verwalter aktivieren',
+  'card.enabled': 'Sitzungsmanager aktivieren',
   'card.enabled.desc': 'Wenn aus, wird keine API registriert und der Seitenleisten-Eintrag verschwindet komplett.',
   'card.history': 'Sitzungsverlaufsdateien',
   'card.history.desc': 'Archivansicht und Bereinigung (Altersheim). Wenn aus, werden keine Verlaufs-Routen registriert und dieser Tab nicht gerendert.',
@@ -505,7 +505,7 @@ export const de: Partial<Record<LocaleKey, string>> = {
   'card.readonly': 'Diese Sitzung kann Einstellungen nicht ändern (schreibgeschützter Mount).',
   'card.unavailable': 'Einstellungsdienst nicht verfügbar; Konfiguration kann nicht gelesen werden.',
   'family.title': 'Screwdriver-Plugin-Einstellungen',
-  'panel.title': 'Sitzungs-Verwalter',
+  'panel.title': 'Sitzungsmanager',
   'panel.tab.history': 'Altersheim',
   'panel.tab.health': 'Untersuchung',
   'panel.close': 'Schließen',
@@ -582,7 +582,7 @@ export const de: Partial<Record<LocaleKey, string>> = {
 
 /** Dizionario italiano, verificato completo contro l'insieme di chiavi zh. */
 export const it: Partial<Record<LocaleKey, string>> = {
-  'card.title': 'Amministratore di sessione',
+  'card.title': 'Gestore sessioni',
   'card.desc': 'File della cronologia · Controllo di salute',
   'card.enabled': 'Abilita l’amministratore di sessione',
   'card.enabled.desc': 'Se disattivato, non registra alcuna API e la voce nella barra laterale scompare del tutto.',
@@ -597,7 +597,7 @@ export const it: Partial<Record<LocaleKey, string>> = {
   'card.readonly': 'Questa sessione non può modificare le impostazioni (montaggio in sola lettura).',
   'card.unavailable': 'Servizio di impostazioni non disponibile; impossibile leggere la configurazione.',
   'family.title': 'Impostazioni del plugin Screwdriver',
-  'panel.title': 'Amministratore di sessione',
+  'panel.title': 'Gestore sessioni',
   'panel.tab.history': 'Casa di riposo',
   'panel.tab.health': 'Visita',
   'panel.close': 'Chiudi',
@@ -674,7 +674,7 @@ export const it: Partial<Record<LocaleKey, string>> = {
 
 /** Русский словарь, проверен на полноту по набору ключей zh. */
 export const ru: Partial<Record<LocaleKey, string>> = {
-  'card.title': 'Распорядитель сессий',
+  'card.title': 'Менеджер сессий',
   'card.desc': 'Файлы истории · Проверка здоровья',
   'card.enabled': 'Включить распорядителя сессий',
   'card.enabled.desc': 'При выключении не регистрируется ни один API, и пункт боковой панели полностью исчезает.',
@@ -689,7 +689,7 @@ export const ru: Partial<Record<LocaleKey, string>> = {
   'card.readonly': 'Эта сессия не может изменять настройки (монтирование только для чтения).',
   'card.unavailable': 'Сервис настроек недоступен; конфигурацию невозможно прочитать.',
   'family.title': 'Настройки плагинов Screwdriver',
-  'panel.title': 'Распорядитель сессий',
+  'panel.title': 'Менеджер сессий',
   'panel.tab.history': 'Пансионат',
   'panel.tab.health': 'Осмотр',
   'panel.close': 'Закрыть',
@@ -766,9 +766,9 @@ export const ru: Partial<Record<LocaleKey, string>> = {
 
 /** Diccionario español, verificado completo contra el conjunto de claves zh. */
 export const es: Partial<Record<LocaleKey, string>> = {
-  'card.title': 'Mayordomo de sesión',
+  'card.title': 'Gestor de sesiones',
   'card.desc': 'Archivos de historial · Comprobación de salud',
-  'card.enabled': 'Activar el mayordomo de sesión',
+  'card.enabled': 'Activar el gestor de sesiones',
   'card.enabled.desc': 'Al desactivarlo no se registra ninguna API y la entrada de la barra lateral desaparece por completo.',
   'card.history': 'Archivos de historial de sesión',
   'card.history.desc': 'Visualización y limpieza del archivo (Residencia). Al desactivarlo no se registran rutas de historial ni se muestra esa pestaña.',
@@ -781,7 +781,7 @@ export const es: Partial<Record<LocaleKey, string>> = {
   'card.readonly': 'Esta sesión no puede modificar la configuración (montaje de solo lectura).',
   'card.unavailable': 'Servicio de configuración no disponible; no se puede leer la configuración.',
   'family.title': 'Ajustes del plugin Screwdriver',
-  'panel.title': 'Mayordomo de sesión',
+  'panel.title': 'Gestor de sesiones',
   'panel.tab.history': 'Residencia',
   'panel.tab.health': 'Revisión',
   'panel.close': 'Cerrar',

@@ -9,18 +9,18 @@
  * 本臂 order=500（末位，破坏性动作不抢位）。老线（≤0.1.5）inject 静默等待
  * 无害；删除入口在老线仍由搜索面板行内按钮承担（同一 purge 链路）。
  *
- * 可见性：行挂载时探针 index-status.directDelete（管家开关，缺省关）——
+ * 可见性：行挂载时探针 `session-health-status.switches.directDelete`（管理开关，缺省关）——
  * 非 true（含探针失败/旧宿主半无字段）整行不渲染；两步确认与管理端/面板
  * 同款（第一击上弦变红「确认删除」，第二击执行；点其它处菜单收起即解弦）。
  */
 import { createElement, useEffect, useState } from 'react'
-import { callHostAny, callSteward, type HostIndexStatus } from './search/host-api.ts'
+import { callSteward, probeDirectDelete } from './host-api.ts'
 import { TRASH_ICON_SVG } from './session-menu-legacy.ts'
 
 /** 宿主菜单席位名（0.1.7+ 存在）。 */
 export const SESSION_MENU_SEAT = 'sidebar.workspaces.session.menu.item'
 /** 本行注册 id（包名空间，避免遮蔽宿主行）。 */
-export const SESSION_MENU_DELETE_ID = 'dsh-session-steward.delete'
+export const SESSION_MENU_DELETE_ID = 'dsh-manage-sessions.delete'
 /** 落位序：宿主末行 session-id(450) 之后。 */
 export const SESSION_MENU_DELETE_ORDER = 500
 
@@ -50,8 +50,8 @@ export function StewardDeleteMenuItem(props: StewardMenuDeleteProps) {
   const openState = typeof useMenuOpenState === 'function' ? useMenuOpenState() : undefined
   useEffect(() => {
     let disposed = false
-    callHostAny<HostIndexStatus>('index-status', {})
-      .then((res) => { if (!disposed) setVisible(menuDeleteVisible((res as HostIndexStatus).directDelete)) })
+    void probeDirectDelete()
+      .then((enabled) => { if (!disposed) setVisible(menuDeleteVisible(enabled)) })
       .catch(() => { if (!disposed) setVisible(false) })
     return () => { disposed = true }
   }, [])

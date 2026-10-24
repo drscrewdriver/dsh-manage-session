@@ -37,10 +37,10 @@ export interface StewardCardProps {
 
 /** 一行设置项。 */
 function Row(props: { title: string; desc?: string; control: JSX.Element }): JSX.Element {
-  return createElement('div', { className: 'dss_setRow' }, [
-    createElement('div', { key: 'text', className: 'dss_setText' }, [
-      createElement('span', { key: 't', className: 'dss_setTitle' }, props.title),
-      props.desc !== undefined && createElement('span', { key: 'd', className: 'dss_setDesc' }, props.desc),
+  return createElement('div', { className: 'dms_setRow' }, [
+    createElement('div', { key: 'text', className: 'dms_setText' }, [
+      createElement('span', { key: 't', className: 'dms_setTitle' }, props.title),
+      props.desc !== undefined && createElement('span', { key: 'd', className: 'dms_setDesc' }, props.desc),
     ]),
     createElement('div', { key: 'ctl' }, props.control),
   ])
@@ -48,7 +48,7 @@ function Row(props: { title: string; desc?: string; control: JSX.Element }): JSX
 
 /** 一个布尔开关（原生 checkbox 语义，样式由本插件 CSS 提供）。 */
 function Toggle(props: { checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }): JSX.Element {
-  return createElement('label', { className: `dss_toggle${props.checked ? ' dss_toggleOn' : ''}` }, [
+  return createElement('label', { className: `dms_toggle${props.checked ? ' dms_toggleOn' : ''}` }, [
     createElement('input', {
       key: 'i',
       type: 'checkbox',
@@ -56,7 +56,7 @@ function Toggle(props: { checked: boolean; disabled?: boolean; onChange: (checke
       disabled: props.disabled === true,
       onChange: (event: { target: { checked: boolean } }) => { props.onChange(event.target.checked) },
     }),
-    createElement('span', { key: 's', className: 'dss_toggleTrack' }, createElement('span', { className: 'dss_toggleKnob' })),
+    createElement('span', { key: 's', className: 'dms_toggleTrack' }, createElement('span', { className: 'dms_toggleKnob' })),
   ])
 }
 
@@ -65,17 +65,17 @@ function Header(props: { t?: CardTranslate; open: boolean; onToggle: () => void 
   return createElement('button', {
     key: 'head',
     type: 'button',
-    className: 'dss_setHead',
+    className: 'dms_setHead',
     'aria-expanded': props.open,
     onClick: props.onToggle,
   }, [
-    createElement('span', { key: 'text', className: 'dss_setHeadText' }, [
-      createElement('span', { key: 't', className: 'dss_setCardTitle' }, translate(props.t, 'card.title')),
-      createElement('span', { key: 'd', className: 'dss_setCardDesc' }, translate(props.t, 'card.desc')),
+    createElement('span', { key: 'text', className: 'dms_setHeadText' }, [
+      createElement('span', { key: 't', className: 'dms_setCardTitle' }, translate(props.t, 'card.title')),
+      createElement('span', { key: 'd', className: 'dms_setCardDesc' }, translate(props.t, 'card.desc')),
     ]),
     createElement('svg', {
       key: 'chev',
-      className: 'dss_setChev',
+      className: 'dms_setChev',
       width: 16,
       height: 16,
       viewBox: '0 0 16 16',
@@ -104,7 +104,7 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
   const rows: JSX.Element[] = []
   if (snapshot.status === 'unavailable') {
     // 拿不到设置服务：抽屉仍要在（否则这个插件在分区里彻底消失），只是里面说明原因。
-    rows.push(createElement('div', { key: 'unavailable', className: 'dss_setDesc' }, translate(t, 'card.unavailable')))
+    rows.push(createElement('div', { key: 'unavailable', className: 'dms_setDesc' }, translate(t, 'card.unavailable')))
   } else {
     rows.push(
       createElement(Row, {
@@ -142,13 +142,13 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
         }),
       }),
     )
-    if (!writable) rows.push(createElement('div', { key: 'ro', className: 'dss_setDesc' }, translate(t, 'card.readonly')))
+    if (!writable) rows.push(createElement('div', { key: 'ro', className: 'dms_setDesc' }, translate(t, 'card.readonly')))
   }
 
   return createElement('div', {
-    className: `dss_setCard${open ? ' dss_setCardOpen' : ''}`,
+    className: `dms_setCard${open ? ' dms_setCardOpen' : ''}`,
   }, [
     createElement(Header, { key: 'head', t, open, onToggle: () => { setOpen(current => !current) } }),
-    open && createElement('div', { key: 'body', className: 'dss_setBody' }, rows),
+    open && createElement('div', { key: 'body', className: 'dms_setBody' }, rows),
   ])
 }

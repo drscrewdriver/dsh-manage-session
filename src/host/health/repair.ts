@@ -125,7 +125,7 @@ export function prescribe(report: SessionHealthReport, dshHome?: string): string
       lines.push('# 1) 归属未知：请人工核对宿主日志里 "not lossless JSON" 前的投影 key')
     }
     lines.push('# 2) 隔离陈旧投影缓存记录（可逆，会提示重启宿主重折叠）')
-    lines.push(`#    POST /session-steward/api/session-health-repair {"sessionId":"${report.sessionId}"}`)
+    lines.push(`#    POST /manage-sessions/api/session-health-repair {"sessionId":"${report.sessionId}"}`)
     lines.push('# 3) 重启宿主后重跑体检，确认 lossless-json 转 ok')
     return lines
   }
@@ -134,7 +134,7 @@ export function prescribe(report: SessionHealthReport, dshHome?: string): string
   if (isActionable(cache?.level)) {
     lines.push(`# 投影缓存异常：${cache?.evidence ?? '未知'}`)
     lines.push('# 1) 先隔离陈旧记录，再重启宿主让其重折叠')
-    lines.push(`#    POST /session-steward/api/session-health-repair {"sessionId":"${report.sessionId}"}`)
+    lines.push(`#    POST /manage-sessions/api/session-health-repair {"sessionId":"${report.sessionId}"}`)
   }
 
   const cold = gate('cold-read')

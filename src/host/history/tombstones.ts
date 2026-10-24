@@ -1,6 +1,6 @@
 /**
  * 退场墓碑台账（2026-10-20 用户定标）：任何 purge 成功路径都往
- * `~/.dsh-switch-search/retired-tombstones.jsonl` 追加一行
+ * `~/.dsh-manage-sessions-index/retired-tombstones.jsonl` 追加一行
  * `{sessionId, retiredAt, source}`，作为离线清残脚本
  * （scripts/cleanup-retired.mjs）的驱动清单。
  *
@@ -34,9 +34,9 @@ export interface RetiredTombstone {
   source: string
 }
 
-/** 默认台账目录 = 索引缺省落点（与 rebuild.ts 的 ~/.dsh-switch-search 同根）。 */
+/** 默认台账目录 = 索引缺省落点（与 rebuild.ts 的 ~/.dsh-manage-sessions-index 同根）。 */
 export function defaultTombstoneDir(): string {
-  return join(homedir(), '.dsh-switch-search')
+  return join(homedir(), '.dsh-manage-sessions-index')
 }
 
 /** 台账文件绝对路径。 */

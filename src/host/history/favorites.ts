@@ -2,7 +2,7 @@
  * 收藏域（R6）—— 插件自有的 JSON 文件，与索引文件/官方存储彻底分离：
  * 索引会因 schema 重置/影子切换整体更换，收藏不能放里面；官方存储中枢
  * 只读不写（唯一写方纪律不破）。文件形如
- * `<dshHome>/storages/session-steward-favorites.json`：
+ * `<dshHome>/storages/manage-sessions-favorites.json`：
  * `{ unit: { name, version }, favoriteSessionIds: string[] }`
  * 原子写（tmp+rename），丢失可重建（收藏只是标记，不是数据）。
  */
@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path'
 
 /** 收藏文件候选路径（dshHome 注入；测试可覆盖）。 */
 export function favoritesFileCandidates(dshHome: string): string[] {
-  return [join(dshHome, 'storages', 'session-steward-favorites.json')]
+  return [join(dshHome, 'storages', 'manage-sessions-favorites.json')]
 }
 
 /** 读取收藏集合；文件缺失/畸形一律空数组（收藏只是标记，丢失不致命）。 */
@@ -60,7 +60,7 @@ export function setFavoriteState(
     mkdirSync(dirname(path), { recursive: true })
     const tmp = `${path}.fav-tmp`
     writeFileSync(tmp, `${JSON.stringify({
-      unit: { name: 'session-steward-favorites', version: 1 },
+      unit: { name: 'manage-sessions-favorites', version: 1 },
       favoriteSessionIds: next,
     }, null, 2)}\n`, 'utf8')
     renameSync(tmp, path)

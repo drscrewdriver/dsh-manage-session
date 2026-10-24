@@ -10,7 +10,7 @@ const CLIENT_EXTERNALS = [
   '@deepseek-ai/dsh-client-ui-slots',
 ]
 
-const ID = 'dsh-session-steward'
+const ID = 'dsh-manage-sessions'
 
 export default defineConfig([
   // 主机半身：src/index.ts 产出 lib/index.js（ESM / node）。

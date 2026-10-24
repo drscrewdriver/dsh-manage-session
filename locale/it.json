@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Amministratore di sessione",
-    "description": "File della cronologia delle sessioni (consultazione e pulizia degli archivi) e controllo di salute delle sessioni (visita → prescrizione → dimissione); non tocca i log di sessione, solo operazioni reversibili."
+    "title": "Gestore sessioni",
+    "description": "Una console per sessioni attive e archiviate (sfoglia, filtra, preferiti, archivia/ripristina, pulizia in blocco, elimina) e controllo di salute. La voce usa lo slot strumenti in alto nella barra laterale, altrimenti il piè di pagina. Nessuna ricerca propria, nessuna dipendenza DRS."
   }
 }

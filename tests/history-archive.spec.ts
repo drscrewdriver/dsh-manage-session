@@ -56,9 +56,8 @@ describe('session-history-archive（批量归档写侧）', () => {
 })
 
 /** 内存路径的运行时:registry 带官方双方法,档案集合内存真值。 */
-function memoryRuntime(archived: string[]): { runtime: StewardRuntime; indexOps: string[] } {
+function memoryRuntime(archived: string[]): { runtime: StewardRuntime } {
   const set = [...archived]
-  const indexOps: string[] = []
   const runtime: StewardRuntime = {
     config: () => ({ enabled: true, historyFiles: true, healthCheck: true, search: true, directDelete: false }),
     dshHome: join(tmpdir(), 'memory-rt'),
@@ -70,28 +69,22 @@ function memoryRuntime(archived: string[]): { runtime: StewardRuntime; indexOps:
     projectionStateFor: () => undefined,
     attribute: () => undefined,
     log: () => {},
-    index: {
-      onArchive: (ids) => { indexOps.push(`archive:${ids.length}`) },
-      onUnarchive: (ids) => { indexOps.push(`unarchive:${ids.length}`) },
-      onPurged: (ids) => { indexOps.push(`purge:${ids.length}`) },
-    },
   }
-  return { runtime, indexOps }
+  return { runtime }
 }
 
 describe('内存路径（官方 registry API,免重启）', () => {
-  it('归档走 archiveSession,requiresRestart=false 且索引联动', async () => {
-    const { runtime, indexOps } = memoryRuntime(['session-a'])
+  it('归档走 archiveSession,requiresRestart=false', async () => {
+    const { runtime } = memoryRuntime(['session-a'])
     const res = await handleMethod('session-history-archive', { sessionIds: ['session-b', 'session-a'] }, runtime) as { ok: boolean; added?: number; total?: number; requiresRestart?: boolean }
     expect(res.ok).toBe(true)
     expect(res.added).toBe(1)
     expect(res.total).toBe(2)
     expect(res.requiresRestart).toBe(false)
-    expect(indexOps).toContain('archive:2')
   })
 
   it('取消归档走 unarchiveSession,失败按会话隔离', async () => {
-    const { runtime, indexOps } = memoryRuntime(['session-a', 'session-b'])
+    const { runtime } = memoryRuntime(['session-a', 'session-b'])
     runtime.registry = () => ({
       get archivedSessionIds() { return ['session-a'] },
       archiveSession: async () => {},
@@ -103,7 +96,6 @@ describe('内存路径（官方 registry API,免重启）', () => {
     expect(res.remaining).toBe(1)
     expect(res.requiresRestart).toBe(false)
     expect(res.failures).toEqual([{ sessionId: 'session-b', reason: 'boom' }])
-    expect(indexOps).toContain('unarchive:1')
   })
 
   it('registry 无官方方法时降级文件路径(requiresRestart=true)', async () => {

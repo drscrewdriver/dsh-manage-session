@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Session Steward",
-    "description": "Session history files (archive browsing & cleanup) and session health checks (checkup → prescription → discharge) — reversible operations only, no touching of session logs."
+    "title": "Session Manager",
+    "description": "One console for active and archived sessions (browse, filter, favorite, archive/unarchive, batch purge, delete) plus a four-gate health checkup. The entry prefers the sidebar top tool slot and falls back to the footer. No search/index of its own and no DRS dependency."
   }
 }

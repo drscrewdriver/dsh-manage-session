@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Mayordomo de sesión",
-    "description": "Archivos de historial de sesión (visualización y limpieza del archivo) y comprobación de salud de las sesiones (revisión → receta → alta); no toca los registros de sesión, solo operaciones reversibles."
+    "title": "Gestor de sesiones",
+    "description": "Una consola para sesiones activas y archivadas (explorar, filtrar, favoritos, archivar/desarchivar, limpieza por lotes, eliminar) y revisión de salud. La entrada usa la ranura de herramientas superior y, si no existe, el pie. Sin búsqueda propia ni dependencia de DRS."
   }
 }

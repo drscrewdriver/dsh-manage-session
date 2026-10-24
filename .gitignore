@@ -5,3 +5,6 @@ node_modules/
 *.tsbuildinfo
 _wt-audit/
 _patch_manage.py
+lib/
+*.tgz
+package-lock.json

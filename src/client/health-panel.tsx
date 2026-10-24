@@ -261,12 +261,12 @@ export function HealthPanel({ t, onClose }: { t?: PanelTranslate; onClose: () =>
   const report = detail?.report ?? discharge?.after
   const lines: (ReactElement | null)[] = []
 
-  lines.push(createElement('div', { key: 'phase1', className: 'dss_phaseRow' }, [
-    createElement('span', { key: 'l', className: 'dss_phase' }, translate(t, 'health.phase.checkup')),
+  lines.push(createElement('div', { key: 'phase1', className: 'dms_phaseRow' }, [
+    createElement('span', { key: 'l', className: 'dms_phase' }, translate(t, 'health.phase.checkup')),
     createElement('button', {
       key: 'scan',
       type: 'button',
-      className: 'dss_actBtn',
+      className: 'dms_actBtn',
       disabled: scanning,
       onClick: runScan,
     }, scanning ? translate(t, 'health.scanning') : translate(t, 'health.scan')),
@@ -278,14 +278,14 @@ export function HealthPanel({ t, onClose }: { t?: PanelTranslate; onClose: () =>
   if (scanning && progress !== null) {
     const total = progress.total
     const pct = total > 0 ? Math.min(100, Math.round((progress.done / total) * 100)) : 0
-    lines.push(createElement('div', { key: 'progress', className: 'dss_progressRow' }, [
-      createElement('div', { key: 'track', className: 'dss_progressTrack' },
+    lines.push(createElement('div', { key: 'progress', className: 'dms_progressRow' }, [
+      createElement('div', { key: 'track', className: 'dms_progressTrack' },
         createElement('div', {
           key: 'fill',
-          className: total > 0 ? 'dss_progressFill' : 'dss_progressFill dss_progressIndeterminate',
+          className: total > 0 ? 'dms_progressFill' : 'dms_progressFill dms_progressIndeterminate',
           ...(total > 0 ? { style: { width: `${pct}%` } } : {}),
         })),
-      createElement('span', { key: 'read', className: 'dss_meta' },
+      createElement('span', { key: 'read', className: 'dms_meta' },
         translate(t, 'health.progress', {
           done: progress.done,
           total: total > 0 ? total : '?',
@@ -298,47 +298,47 @@ export function HealthPanel({ t, onClose }: { t?: PanelTranslate; onClose: () =>
   // 语料总数对不上时顺带提示刷新（枚举语料很便宜，所以这条判断不构成新的失效策略）。
   if (cacheInfo !== null && !scanning && detail === null && discharge === null) {
     const ago = relativeAgo(cacheInfo.generatedAt, Date.now())
-    lines.push(createElement('div', { key: 'cache', className: 'dss_cacheRow' }, [
-      createElement('span', { key: 'h', className: 'dss_meta' },
+    lines.push(createElement('div', { key: 'cache', className: 'dms_cacheRow' }, [
+      createElement('span', { key: 'h', className: 'dms_meta' },
         translate(t, 'health.cache.hint', { ago: translate(t, ago.key, { n: ago.n }) })),
-      cacheInfo.currentTotal !== cacheInfo.total && createElement('span', { key: 'chg', className: 'dss_why' },
+      cacheInfo.currentTotal !== cacheInfo.total && createElement('span', { key: 'chg', className: 'dms_why' },
         translate(t, 'health.cache.corpusChanged', { was: cacheInfo.total, now: cacheInfo.currentTotal })),
       createElement('button', {
         key: 'r',
         type: 'button',
-        className: 'dss_actBtn',
+        className: 'dms_actBtn',
         onClick: () => { runScan({ forceRefresh: true }) },
       }, translate(t, 'health.cache.refresh')),
     ]))
   }
 
-  if (error !== null) lines.push(createElement('div', { key: 'err', className: 'dss_error' }, error))
+  if (error !== null) lines.push(createElement('div', { key: 'err', className: 'dms_error' }, error))
   if (detail !== null || discharge !== null) {
-    lines.push(createElement('div', { key: 'back', className: 'dss_btnRow' }, [
+    lines.push(createElement('div', { key: 'back', className: 'dms_btnRow' }, [
       createElement('button', {
         key: 'b',
         type: 'button',
-        className: 'dss_actBtn',
+        className: 'dms_actBtn',
         onClick: () => { setDetail(null); setDischarge(null) },
       }, translate(t, 'health.back')),
     ]))
   }
 
   if (report !== undefined) {
-    lines.push(createElement('div', { key: 'gates', className: 'dss_gateList' }, report.gates.map(gate =>
-      createElement('div', { key: gate.id, className: `dss_gate dss_gate_${gate.level}` }, [
-        createElement('span', { key: 'n', className: 'dss_gateName' }, translate(t, GATE_LABEL[gate.id])),
-        createElement('span', { key: 'lv', className: `dss_levelPill dss_level_${gate.level}` }, translate(t, LEVEL_LABEL[gate.level])),
-        createElement('span', { key: 'ev', className: 'dss_gateEvidence' }, gate.evidence),
-        gate.attribution !== undefined && createElement('span', { key: 'at', className: 'dss_meta' },
+    lines.push(createElement('div', { key: 'gates', className: 'dms_gateList' }, report.gates.map(gate =>
+      createElement('div', { key: gate.id, className: `dms_gate dms_gate_${gate.level}` }, [
+        createElement('span', { key: 'n', className: 'dms_gateName' }, translate(t, GATE_LABEL[gate.id])),
+        createElement('span', { key: 'lv', className: `dms_levelPill dms_level_${gate.level}` }, translate(t, LEVEL_LABEL[gate.level])),
+        createElement('span', { key: 'ev', className: 'dms_gateEvidence' }, gate.evidence),
+        gate.attribution !== undefined && createElement('span', { key: 'at', className: 'dms_meta' },
           `${translate(t, 'health.attribution')}: ${gate.attribution.package ?? 'unknown'}${gate.attribution.projection !== undefined ? ` · ${gate.attribution.projection}` : ''}${gate.attribution.field !== undefined ? ` · ${translate(t, 'health.field')} ${gate.attribution.field}` : ''}`),
       ]),
     )))
   } else if (findings !== null) {
     if (findings.length === 0) {
-      lines.push(createElement('div', { key: 'clean', className: 'dss_empty' }, translate(t, 'health.empty')))
+      lines.push(createElement('div', { key: 'clean', className: 'dms_empty' }, translate(t, 'health.empty')))
     } else {
-      lines.push(createElement('ul', { key: 'list', className: 'dss_list', role: 'list' }, findings.map((item) => {
+      lines.push(createElement('ul', { key: 'list', className: 'dms_list', role: 'list' }, findings.map((item) => {
         // 行内列出「哪一门·什么档位」。只有总判徽标时，30 行「注意」彼此不可区分，
         // 用户必须逐条点开才发现原因（实测体验问题）；门摘要让信号可扫读。
         // `skipped` 一并列出：它是「未检查」而非异常，不应与 warn 混为一谈。
@@ -346,17 +346,17 @@ export function HealthPanel({ t, onClose }: { t?: PanelTranslate; onClose: () =>
           .filter(gate => gate.level !== 'ok')
           .map(gate => `${translate(t, GATE_LABEL[gate.id])}·${translate(t, LEVEL_LABEL[gate.level])}`)
           .join(' · ')
-        return createElement('li', { key: item.sessionId, className: 'dss_row' }, [
-          createElement('span', { key: 'lv', className: `dss_levelPill dss_level_${item.level}` }, translate(t, LEVEL_LABEL[item.level])),
+        return createElement('li', { key: item.sessionId, className: 'dms_row' }, [
+          createElement('span', { key: 'lv', className: `dms_levelPill dms_level_${item.level}` }, translate(t, LEVEL_LABEL[item.level])),
           // 优先级徽标：这些会话的当前代是从迁移暂存（TMP）发布出来的，即本插件
           // 此前读错产物或完全发现不了的那批。列表按优先级排，再标一次让排序可解释。
-          item.priority === 'high' && createElement('span', { key: 'p', className: 'dss_meta' }, translate(t, 'health.priority.high')),
-          createElement('span', { key: 'id', className: 'dss_meta dss_uuid' }, item.sessionId),
-          reasons !== '' && createElement('span', { key: 'why', className: 'dss_why' }, reasons),
+          item.priority === 'high' && createElement('span', { key: 'p', className: 'dms_meta' }, translate(t, 'health.priority.high')),
+          createElement('span', { key: 'id', className: 'dms_meta dms_uuid' }, item.sessionId),
+          reasons !== '' && createElement('span', { key: 'why', className: 'dms_why' }, reasons),
           createElement('button', {
             key: 'd',
             type: 'button',
-            className: 'dss_actBtn',
+            className: 'dms_actBtn',
             onClick: () => { openDetail(item.sessionId) },
           }, translate(t, 'health.detail')),
         ])
@@ -365,50 +365,50 @@ export function HealthPanel({ t, onClose }: { t?: PanelTranslate; onClose: () =>
   }
 
   if (report !== undefined) {
-    lines.push(createElement('div', { key: 'phase2', className: 'dss_phaseRow' }, [
-      createElement('span', { key: 'l', className: 'dss_phase' }, translate(t, 'health.phase.prescribe')),
+    lines.push(createElement('div', { key: 'phase2', className: 'dms_phaseRow' }, [
+      createElement('span', { key: 'l', className: 'dms_phase' }, translate(t, 'health.phase.prescribe')),
       createElement('button', {
         key: 'repair',
         type: 'button',
-        className: 'dss_actBtn',
+        className: 'dms_actBtn',
         disabled: repairing || report.level === 'ok',
         onClick: () => { runRepair(report.sessionId) },
       }, [
         // 处置只涉及单会话（2 次报告 + 1 次文件操作），耗时不足以支撑进度条；
         // 但必须有**可动的**忙碌反馈，否则点击后界面静止，用户不知道是否在跑。
-        repairing ? createElement('span', { key: 'sp', className: 'dss_spinner', 'aria-hidden': 'true' }) : null,
+        repairing ? createElement('span', { key: 'sp', className: 'dms_spinner', 'aria-hidden': 'true' }) : null,
         createElement('span', { key: 'tx' }, repairing ? translate(t, 'health.repairing') : translate(t, 'health.repair')),
       ]),
     ]))
     // 署名转换按钮：只在 source-kind 门报 warn（v4 日志里观测到旧署名行）时出现，
     // 不随常规处置出现——v3 及更早版本线的旧行由宿主迁移负责，不该一键误触。
     if (report.gates.some(gate => gate.id === 'source-kind' && gate.level === 'warn')) {
-      lines.push(createElement('div', { key: 'migrate', className: 'dss_phaseRow' }, [
+      lines.push(createElement('div', { key: 'migrate', className: 'dms_phaseRow' }, [
         createElement('button', {
           key: 'm',
           type: 'button',
-          className: 'dss_actBtn',
+          className: 'dms_actBtn',
           disabled: migrating,
           onClick: () => { runSourceMigrate(report.sessionId) },
         }, [
-          migrating ? createElement('span', { key: 'sp', className: 'dss_spinner', 'aria-hidden': 'true' }) : null,
+          migrating ? createElement('span', { key: 'sp', className: 'dms_spinner', 'aria-hidden': 'true' }) : null,
           createElement('span', { key: 'tx' }, migrating
             ? translate(t, 'health.sourceMigrating')
             : translate(t, 'health.sourceMigrate')),
         ]),
-        migrateNote !== null && createElement('span', { key: 'note', className: 'dss_status' }, migrateNote),
+        migrateNote !== null && createElement('span', { key: 'note', className: 'dms_status' }, migrateNote),
       ]))
     }
     const prescriptions = detail?.prescriptions ?? discharge?.prescriptions ?? []
     if (prescriptions.length > 0) {
-      lines.push(createElement('div', { key: 'cmds', className: 'dss_cmdBlock' }, [
-        createElement('div', { key: 'h', className: 'dss_meta' }, translate(t, 'health.commands')),
-        ...prescriptions.map((line, index) => createElement('div', { key: `c${index}`, className: 'dss_cmdLine' }, [
-          createElement('code', { key: 'code', className: 'dss_cmd' }, line),
+      lines.push(createElement('div', { key: 'cmds', className: 'dms_cmdBlock' }, [
+        createElement('div', { key: 'h', className: 'dms_meta' }, translate(t, 'health.commands')),
+        ...prescriptions.map((line, index) => createElement('div', { key: `c${index}`, className: 'dms_cmdLine' }, [
+          createElement('code', { key: 'code', className: 'dms_cmd' }, line),
           createElement('button', {
             key: 'cp',
             type: 'button',
-            className: 'dss_actBtn',
+            className: 'dms_actBtn',
             onClick: () => { copy(line) },
           }, copied === line ? translate(t, 'health.copied') : translate(t, 'health.copy')),
         ])),
@@ -417,11 +417,11 @@ export function HealthPanel({ t, onClose }: { t?: PanelTranslate; onClose: () =>
   }
 
   if (discharge !== null) {
-    lines.push(createElement('div', { key: 'phase3', className: 'dss_phaseRow' }, [
-      createElement('span', { key: 'l', className: 'dss_phase' }, translate(t, 'health.phase.discharge')),
-      createElement('span', { key: 'b', className: `dss_levelPill dss_level_${discharge.before?.level ?? 'warn'}` },
+    lines.push(createElement('div', { key: 'phase3', className: 'dms_phaseRow' }, [
+      createElement('span', { key: 'l', className: 'dms_phase' }, translate(t, 'health.phase.discharge')),
+      createElement('span', { key: 'b', className: `dms_levelPill dms_level_${discharge.before?.level ?? 'warn'}` },
         `${translate(t, 'health.before')}: ${translate(t, LEVEL_LABEL[discharge.before?.level ?? 'warn'])}`),
-      createElement('span', { key: 'a', className: `dss_levelPill dss_level_${discharge.after?.level ?? 'warn'}` },
+      createElement('span', { key: 'a', className: `dms_levelPill dms_level_${discharge.after?.level ?? 'warn'}` },
         `${translate(t, 'health.after')}: ${translate(t, LEVEL_LABEL[discharge.after?.level ?? 'warn'])}`),
     ]))
     // 定性结论优先于机械的 before/after：处置只隔离投影缓存，
@@ -430,18 +430,18 @@ export function HealthPanel({ t, onClose }: { t?: PanelTranslate; onClose: () =>
     if (discharge.explanation !== undefined && discharge.explanation !== '') {
       lines.push(createElement('div', {
         key: 'verdict',
-        className: `dss_verdict dss_verdict_${discharge.verdict ?? 'failed'}`,
+        className: `dms_verdict dms_verdict_${discharge.verdict ?? 'failed'}`,
       }, discharge.explanation))
     }
     if (discharge.repair?.ok === true) {
-      lines.push(createElement('div', { key: 'repairNote', className: 'dss_status' },
+      lines.push(createElement('div', { key: 'repairNote', className: 'dms_status' },
         `${translate(t, 'health.quarantined')} → ${discharge.repair.to ?? ''}`))
     } else if (discharge.repair?.error !== undefined) {
-      lines.push(createElement('div', { key: 'repairErr', className: 'dss_status' }, discharge.repair.error))
+      lines.push(createElement('div', { key: 'repairErr', className: 'dms_status' }, discharge.repair.error))
     }
   }
 
-  return createElement('div', { className: 'dss_tabBody' }, lines)
+  return createElement('div', { className: 'dms_tabBody' }, lines)
 }
 
 /** 供单测断言：面板依赖的方法名（必须全部以 session- 开头）。 */

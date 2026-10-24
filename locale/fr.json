@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Intendant de session",
-    "description": "Fichiers d'historique de session (consultation et nettoyage des archives) et contrôle de santé des sessions (examen → ordonnance → sortie) ; aucune modification des journaux de session, opérations réversibles uniquement."
+    "title": "Gestionnaire de sessions",
+    "description": "Une console pour les sessions actives et archivées (parcourir, filtrer, favoris, archiver/désarchiver, nettoyage par lot, supprimer) et un bilan de santé. L’entrée privilégie l’emplacement d’outils en haut de la barre latérale, sinon le pied. Pas de recherche propre, aucune dépendance DRS."
   }
 }

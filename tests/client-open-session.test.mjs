@@ -21,7 +21,7 @@
  * Usage: node --import tsx tests/client-open-session.test.mjs
  */
 import assert from 'node:assert/strict'
-import { openSessionThrough } from '../src/client/search/host-api.ts'
+import { openSessionThrough } from '../src/client/host-api.ts'
 
 // 0.1.7+ hosts: uiWorkspace wins, sessions is never touched.
 {

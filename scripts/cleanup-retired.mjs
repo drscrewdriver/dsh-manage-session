@@ -2,7 +2,7 @@
 /**
  * 退场会话残骸清理（drsc-redact-memory-wiring 姊妹功能，2026-10-20 用户定标）。
  *
- * 输入 = 墓碑台账 `~/.dsh-switch-search/retired-tombstones.jsonl`（管家 purge
+ * 输入 = 墓碑台账 `~/.dsh-manage-sessions-index/retired-tombstones.jsonl`（管家 purge
  * 成功路径落账，见 src/host/history/tombstones.ts）。台账里每个被判退场的
  * 会话，本脚本对**仍然残留**的以下四处做兜底清残：
  *
@@ -16,7 +16,7 @@
  *
  * 纪律（对齐 l1/l0-archive-purge 与项目删除规范）：
  * - **dry-run 缺省**，`--apply` 才动盘；
- * - **禁止永久删除**：文件/目录一律移动进 `~/.dsh-switch-search/retired-cleanup-<ts>/`，
+ * - **禁止永久删除**：文件/目录一律移动进 `~/.dsh-manage-sessions-index/retired-cleanup-<ts>/`，
  *   数据库改动前先备份同归档区；
  * - **DSH 必须在关闭状态运行**：检出宿主进程即中止（`--force-live` 显式越过，
  *   越过后自负数据竞争责任）；
@@ -43,7 +43,7 @@ export const SESSION_ID_RE = /^session-[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9
 
 /** 台账默认路径（与 src/host/history/tombstones.ts 的缺省目录同串）。 */
 export function defaultLedgerPath() {
-  return join(homedir(), '.dsh-switch-search', 'retired-tombstones.jsonl')
+  return join(homedir(), '.dsh-manage-sessions-index', 'retired-tombstones.jsonl')
 }
 
 /** 读台账：JSONL，畸形行跳过；按 id 去重（保留最早 retiredAt）。 */
@@ -292,7 +292,7 @@ export function parseArgs(argv) {
 /** 汇总一次运行（导出供单测直接驱动；main 只是它的 CLI 壳）。 */
 export function runCleanup(opts) {
   const home = opts.dshHome !== '' ? opts.dshHome : join(homedir(), '.dsh')
-  const indexDir = opts.indexDir !== '' ? opts.indexDir : join(homedir(), '.dsh-switch-search')
+  const indexDir = opts.indexDir !== '' ? opts.indexDir : join(homedir(), '.dsh-manage-sessions-index')
   const ledger = opts.ledger !== '' ? opts.ledger : join(indexDir, 'retired-tombstones.jsonl')
   const collectorDb = opts.collectorDb !== '' ? opts.collectorDb : join(homedir(), '.dsh-reference-session-collector', 'projection.db')
   const wsFile = join(home, 'storages', 'workspace.json')

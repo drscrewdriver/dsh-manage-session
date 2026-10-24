@@ -13,12 +13,11 @@
  * 无头测试只调 getSnapshot、不 subscribe，绝不触发 fetch）。
  */
 import type { StewardConfig } from '../config.ts'
-import type { SwitchSearchConfig } from '../config.ts'
+
 import { callHostAny } from './host-api.ts'
 
 /** 与宿主 settings-bridge.ts 的命名空间键一致（存储键稳定承诺）。 */
-const STEWARD_NS = 'session-steward'
-const SEARCH_NS = 'switch-search'
+const STEWARD_NS = 'manage-sessions'
 
 /** 单视图快照（StewardCardScope / SwitchCardScope 的结构交集）。 */
 export interface BridgeSnapshot<V> {
@@ -38,7 +37,6 @@ export interface BridgeScope<V> {
 /** 共享文档仓：两视图读同一份 describe/mutate 结果。 */
 interface SharedDoc {
   steward: Record<string, unknown>
-  search: Record<string, unknown>
   status: 'loading' | 'ready' | 'unavailable'
   writable: boolean
   revision: number | undefined
@@ -46,7 +44,6 @@ interface SharedDoc {
 
 const shared: SharedDoc = {
   steward: {},
-  search: {},
   status: 'loading',
   writable: false,
   revision: undefined,
@@ -81,8 +78,7 @@ function ensureDescribe(): Promise<void> {
       if (res.ok === true && res.namespaces !== null && typeof res.namespaces === 'object') {
         replaceDoc({
           steward: res.namespaces[STEWARD_NS] ?? {},
-          search: res.namespaces[SEARCH_NS] ?? {},
-          status: 'ready',
+            status: 'ready',
           writable: res.writable === true,
           revision: typeof res.revision === 'number' ? res.revision : undefined,
         })
@@ -152,7 +148,6 @@ function makeBridgeScope<V extends object>(
       if (res.ok === true && res.namespaces !== null && typeof res.namespaces === 'object') {
         replaceDoc({
           steward: res.namespaces[STEWARD_NS] ?? shared.steward,
-          search: res.namespaces[SEARCH_NS] ?? shared.search,
           revision: typeof res.revision === 'number' ? res.revision : shared.revision,
         })
       } else {
@@ -166,19 +161,13 @@ function makeBridgeScope<V extends object>(
 }
 
 let stewardScope: BridgeScope<StewardConfig> | undefined
-let searchScope: BridgeScope<SwitchSearchConfig> | undefined
 
-/** 管家卡/管家入口的桥 scope（命名空间 session-steward）。 */
+/** 管家卡/管家入口的桥 scope（命名空间 manage-sessions）。 */
 export function stewardBridgeScope(): BridgeScope<StewardConfig> {
   stewardScope ??= makeBridgeScope<StewardConfig>(STEWARD_NS, (doc) => doc.steward)
   return stewardScope
 }
 
-/** 搜索卡/搜索入口的桥 scope（命名空间 switch-search）。 */
-export function searchBridgeScope(): BridgeScope<SwitchSearchConfig> {
-  searchScope ??= makeBridgeScope<SwitchSearchConfig>(SEARCH_NS, (doc) => doc.search)
-  return searchScope
-}
 
 /**
  * 原生句柄 + 桥的合成 scope：原生快照**在任意时刻**观测到 unavailable（出生

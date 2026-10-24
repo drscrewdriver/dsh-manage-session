@@ -1,18 +1,17 @@
 /**
- * dsh-session-steward 主机半身（合并包）：两条 fenced HTTP 路由 ——
+ * dsh-manage-sessions 主机半身（会话管理器）：一条 fenced HTTP 路由 ——
  *
- * - `/session-steward/api`：管家子域，方法名一律 `session-*`；
- * - `/switch-search/api`：搜索索引子域（历史前缀，浏览器旧 bundle 依赖），方法名 `index-*`/`list-sessions` 等。
+ * - `/manage-sessions/api`：管理 + 体检，方法名一律 `session-*`。
  *
- * 三个子域开关（feature gate，关掉不注册对应方法，调用返回显式 disabled 错误，不留空壳）：
- * - `historyFiles`（会话历史文件 / 养老院）：`session-history-*`；
- * - `healthCheck`（健康检查 / 体检）：`session-health-*`；
- * - `search`（搜索索引）：`index-*` 及侧栏搜索入口。
+ * 两个子域开关（feature gate，关掉不注册对应方法，调用返回显式 disabled 错误，
+ * 不留空壳）：
+ * - `historyFiles`（会话历史文件 / 归档）：`session-history-*`；
+ * - `healthCheck`（健康检查 / 体检）：`session-health-*`。
  * 另有插件总开关 `enabled`：关闭后不注册任何路由。
  *
- * 搜索子域自带独立索引（node:sqlite FTS5，本插件自有的文件，绝非宿主官方
- * session-query 索引）：`list-sessions` 标题语料、`content-search` 按会话聚合的
- * 内容搜索、`index-status/rebuild/export/import` 索引生命周期面。
+ * **本包不再带搜索/索引**（已拆回 dsh-search-index，DRS 依赖也随之回去）：
+ * 管理台的语料改由 `session-catalog` 方法从宿主 `sessionQuery` + 官方归档集合
+ * 现场拼装（活跃/归档同表），不维护任何自有索引、不依赖 DRS。
  *
  * 只读诊断 + 可逆处置；不改会话日志、不改历史数据、不静默丢弃字段。
  */
@@ -26,17 +25,13 @@ import {
   DEFAULT_CONFIG,
   STEWARD_API_PREFIX,
   STEWARD_SETTINGS_NAMESPACE,
-  SWITCH_API_PREFIX,
-  SWITCH_DEFAULT_CONFIG,
-  SWITCH_SEARCH_SETTINGS_NAMESPACE,
   type StewardConfig,
-  type SwitchSearchConfig,
 } from './config.ts'
 import { archiveHistory, listHistory, pruneHistory, storagePathsFor } from './host/history/archive.ts'
 import { listFavorites, setFavoriteState } from './host/history/favorites.ts'
 import type { StewardRegistryFace } from './host/history/archive-source.ts'
+import { readArchiveSet } from './host/history/archive-source.ts'
 import { locateSessionUsage, purgeHistory } from './host/history/purge.ts'
-import { appendRetiredTombstones, defaultTombstoneDir } from './host/history/tombstones.ts'
 import {
   bridgeOverlay,
   installLegacySettingsBridge,
@@ -51,29 +46,9 @@ import { decodeSessionLogFile } from './host/health/decode.ts'
 import { assessRepair, prescribe, quarantineProjectionCache } from './host/health/repair.ts'
 import { countCorpus, findSession, findSessionLog, scanSessions } from './host/health/scan.ts'
 import { gateSourceKind, migrateSessionSourceKind, readSourceKindFacts } from './host/health/source-kind.ts'
-import { SwitchIndexEngine, resolveTypes, type SwitchIndexContentType, type SwitchSearchSort } from './host/index/engine.ts'
-import { SwitchWatermarkSync, type SwitchSyncState } from './host/index/sync.ts'
-import { createArchiveSource, type SwitchArchiveDiagnostics } from './host/index/archive-source.ts'
-import { detectSteward } from './host/index/peers.ts'
-import { DrsCorpusSource, resolveDrsBaseUrl } from './host/index/drs-source.ts'
-// 归档集合的写方（prune）在管家子域：搜索子域只读归档集合把归档会话折进索引
-// 状态（单一写方，一个 owner —— 合并后 owner 就在本包 history 子域）。
-export { createArchiveSource, type SwitchArchiveDiagnostics } from './host/index/archive-source.ts'
-import {
-  DEFAULT_INDEX_LAYOUT,
-  importIntoIndex,
-  listArchives,
-  recoverIndex,
-  rebuildIndex,
-  resolveIndexDir,
-  type SwitchIndexLayout,
-  type SwitchRebuildState,
-} from './host/index/rebuild.ts'
-import { exportSnapshot, parseSnapshot } from './host/index/snapshot.ts'
-import { extractTitleFromEvents, type SwitchRawEvent } from './host/index/extract.ts'
 
-export { DEFAULT_CONFIG, STEWARD_API_PREFIX, STEWARD_SETTINGS_NAMESPACE, SWITCH_API_PREFIX, SWITCH_DEFAULT_CONFIG } from './config.ts'
-export type { StewardConfig, SwitchSearchConfig } from './config.ts'
+export { DEFAULT_CONFIG, STEWARD_API_PREFIX, STEWARD_SETTINGS_NAMESPACE } from './config.ts'
+export type { StewardConfig } from './config.ts'
 export { readArchiveSet, pruneArchiveFile, archiveArchiveFile, editWorkspaceDocument } from './host/history/archive-source.ts'
 export { listHistory, pruneHistory, archiveHistory } from './host/history/archive.ts'
 export { purgeHistory, locateSessionUsage, indexSessionDirs, isSafeChild, dirSize, sessionsRootFor, projCacheRootFor, isSourceMigrateBackupName, backupFilesIn } from './host/history/purge.ts'
@@ -105,12 +80,6 @@ export { HealthCache } from './host/health/cache.ts'
 export type { HealthCacheEntry } from './host/health/cache.ts'
 export { assessRepair } from './host/health/repair.ts'
 export type { RepairAssessment, RepairVerdict } from './host/health/repair.ts'
-export { SwitchIndexEngine } from './host/index/engine.ts'
-export { extractTitleFromEvents } from './host/index/extract.ts'
-export { SwitchWatermarkSync } from './host/index/sync.ts'
-export { rebuildIndex, importIntoIndex, recoverIndex, swapShadowIntoActive, DEFAULT_INDEX_LAYOUT } from './host/index/rebuild.ts'
-export { exportSnapshot, parseSnapshot } from './host/index/snapshot.ts'
-export { detectSteward, probePeer } from './host/index/peers.ts'
 
 /** 本插件声明的宿主服务（与 toggle 相同的注入面）。0.2.1-a.2 起 webRuntime 更名 webStartup，读取面走双名回退链。 */
 export const inject = ['webServer', 'webStartup']
@@ -160,31 +129,11 @@ export const Config = z.object({
   enabled: withVolatile(z.boolean().default(true)),
   historyFiles: withVolatile(z.boolean().default(true)),
   healthCheck: withVolatile(z.boolean().default(true)),
-  search: withVolatile(z.boolean().default(true)),
   directDelete: withVolatile(z.boolean().default(false)),
-  defaultMode: withVolatile(z.union(['title', 'content']).default('title')),
-  autoSync: withVolatile(z.boolean().default(true)),
-  syncIntervalMs: withVolatile(z.number().default(30_000)),
-  archiveKeep: withVolatile(z.number().default(2)),
-  indexDir: withVolatile(z.string().default('')),
-  corpusSource: withVolatile(z.union(['native', 'drs']).default('drs')),
-  drsBaseUrl: withVolatile(z.string().default('')),
 })
 
 /** 单次请求体的上限（防御无界读取）。 */
 const MAX_BODY_BYTES = 16 << 20
-
-/** content-search 单次返回的默认会话数上限。 */
-const DEFAULT_LIMIT = 20
-
-/** 独立索引目录的环境变量覆盖。 */
-const INDEX_DIR_ENV = 'DSH_SWITCH_SEARCH_DIR'
-
-/** 改名/自动标题落盘的 log-only 事件（追加进日志，会推 version，水位轮询本可迟到一轮兜住）。 */
-const TITLE_EVENT_TYPE = 'session/title'
-
-/** 改名风暴合并为一次标题折叠（自动标题一轮会连发多条）。 */
-const TITLE_FLUSH_MS = 250
 
 /** 归一化 Host authority，无法解析时为 undefined。 */
 function parseAuthority(authority: string): URL | undefined {
@@ -290,6 +239,10 @@ export interface StewardRuntime {
   attribute: (projection: string) => { projection?: string; package?: string; field?: string } | undefined
   log: (message: string) => void
   /**
+   * 管理台语料来源（宿主 `sessionQuery`；可选：缺席时 `session-catalog` 显式报错）。
+   */
+  sessionQuery?: SwitchSessionQuery
+  /**
    * 体检结果缓存（进程内，随 fiber 存活）。
    *
    * 可选：缺省表示本次装配不启用缓存（只影响「关面板重开」是否零延迟，
@@ -301,23 +254,6 @@ export interface StewardRuntime {
    * 租约。缺省（单测/modern 宿主）= describe 回空投影、mutate 显式拒绝。
    */
   settingsBridge?: BridgeState
-  /**
-   * 搜索索引联动钩子（可选）：管家写侧操作成功后同步翻索引的归档标记 /
-   * 删除索引行，消灭"搜索还挂着 30s 前的幽灵"的窗口。缺省（单测/降级）为无联动。
-   */
-  index?: {
-    /** 批量归档成功 → 翻 archived=true。 */
-    onArchive: (sessionIds: readonly string[]) => void
-    /** 取消归档成功 → 翻 archived=false。 */
-    onUnarchive: (sessionIds: readonly string[]) => void
-    /** 清理成功（物理删除）→ 索引行整个移除。 */
-    onPurged: (sessionIds: readonly string[]) => void
-  }
-  /**
-   * 退场墓碑台账目录（可选）：purge 成功后追加 retired-tombstones.jsonl。
-   * 缺省 = ~/.dsh-switch-search（单测注入临时目录隔离真实家目录）。
-   */
-  tombstoneDir?: () => string
 }
 
 /**
@@ -341,26 +277,16 @@ export const HEALTH_METHODS = [
   'session-health-repair',
   'session-health-source-migrate',
 ] as const
-/** 搜索索引子域方法（`/switch-search/api`；index-export/import 走原始体，其余 JSON）。 */
-export const INDEX_METHODS = [
-  'list-sessions',
-  'content-search',
-  'search-status',
-  'index-status',
-  'index-rebuild',
-  'index-export',
-  'index-import',
-] as const
 
 /** 依据开关判定某方法是否启用。 */
 export function methodEnabled(method: string, config: Required<StewardConfig>): boolean {
+  if (method === 'session-catalog') return config.enabled !== false
   if ((HISTORY_METHODS as readonly string[]).includes(method)) return config.historyFiles !== false
   if ((HEALTH_METHODS as readonly string[]).includes(method)) return config.healthCheck !== false
-  if ((INDEX_METHODS as readonly string[]).includes(method)) return config.search !== false
   return false
 }
 
-/** ------------------------------------------------------------------ 搜索子域 handlers */
+/** ------------------------------------------------------------------ 会话语料结构镜像 */
 
 /**
  * One session header shape the query service returns (structural subset).
@@ -390,21 +316,17 @@ interface SwitchTitleObservationResult {
   reason?: unknown
 }
 
-/** The session-query service face: corpus reads, title folding, FTS5 search. */
+/** The session-query service face used by the manage console catalog. */
 interface SwitchSessionQuery {
   listSessions(signal?: AbortSignal): Promise<readonly SwitchSessionRecord[]>
   readSession?(sessionId: string): Promise<{
     session: SwitchSessionHeader
-    events: readonly SwitchRawEvent[]
+    events: readonly unknown[]
   }>
   readTitleSnapshots(
     sessionIds: readonly string[],
     signal?: AbortSignal,
   ): Promise<readonly SwitchTitleObservationResult[]>
-  searchSessions?(
-    request: { query: string; eventFilters?: readonly unknown[]; limit?: number },
-    exec?: { signal?: AbortSignal },
-  ): Promise<{ items: readonly unknown[]; nextCursor?: string }>
 }
 
 /**
@@ -431,316 +353,44 @@ async function titleMap(
   return map
 }
 
-/** list-sessions: the title-search corpus (index-served, live fallback). */
-async function listSessions(srt: SearchRuntime): Promise<{ ok: boolean; items?: unknown[]; error?: string }> {
-  const index = srt.index
-  const sessionQuery = srt.sessionQuery
-  // Fast path: the independent index caches every session header (title/cwd/
-  // updatedAt). Serving from it keeps the panel instant — the live-preferred
-  // corpus projection (readTitleSnapshots per session) is what used to blow
-  // the client's 10s timeout on large corpora. A refresh sync runs in the
-  // background so newly created sessions appear on the next open.
-  if (index.engine.isOpen && index.engine.countSessions() > 0) {
-    if (sessionQuery !== undefined && index.sync.snapshot().state !== 'syncing') {
-      void index.sync.poll().catch(() => {})
-    }
-    return {
-      ok: true,
-      items: index.engine.listIndexedSessions().map(session => ({
-        sessionId: session.sessionId,
-        title: session.title,
-        cwd: session.cwd,
-        updatedAt: session.updatedAt,
-        archived: session.archived,
-      })),
-    }
-  }
-  if (sessionQuery === undefined) {
-    return { ok: false, error: 'sessionQuery 服务不可用，且独立索引尚未建立' }
-  }
+/** session-catalog: 管理台语料（活跃 + 归档同表，无自有索引、无 DRS）。 */
+async function listSessions(runtime: StewardRuntime): Promise<{ ok: boolean; items?: unknown[]; error?: string }> {
+  const sessionQuery = runtime.sessionQuery
+  if (sessionQuery === undefined) return { ok: false, error: 'sessionQuery 服务不可用，无法列出会话' }
+  // 归档集合与管理台写路同源（存储文件优先、registry 兜底）——否则清理后列表不跟。
+  const archivedIds = new Set(readArchiveSet(runtime.registry(), storagePathsFor(runtime.dshHome)).ids)
   try {
     const records = await sessionQuery.listSessions()
     const titles = await titleMap(sessionQuery, records.map(record => record.header.id))
-    return {
-      ok: true,
-      items: records.map(record => ({
+    const seen = new Set<string>()
+    const items: unknown[] = records.map((record) => {
+      seen.add(record.header.id)
+      return {
         sessionId: record.header.id,
         title: titles.get(record.header.id) ?? '',
         cwd: record.header.cwd ?? '',
         updatedAt: record.header.createdAt,
-        archived: false,
-      })),
+        archived: archivedIds.has(record.header.id),
+      }
+    })
+    // 归档集合里未被 sessionQuery 语料覆盖的 id（老线/离线条目）也列出来，
+    // 否则「归档域筛选」会漏掉真实存在于归档数组里的会话。
+    for (const sessionId of archivedIds) {
+      if (seen.has(sessionId)) continue
+      items.push({ sessionId, title: '', cwd: '', updatedAt: 0, archived: true })
     }
+    return { ok: true, items }
   } catch (err) {
     return { ok: false, error: String(err instanceof Error ? err.message : err) }
   }
 }
 
-/**
- * content-search: session-grouped hits from the independent index.
- * `sortBy: 'time'` orders by session recency (`updatedAt`), anything else by
- * relevance; the host orders before truncating so the page is honest.
- */
-async function contentSearch(
-  srt: SearchRuntime,
-  payload: unknown,
-  requestHost = '',
-): Promise<{ ok: boolean; items?: unknown[]; error?: string }> {
-  const record = payload as { query?: unknown; limit?: unknown; types?: unknown; sortBy?: unknown; archived?: unknown; expand?: unknown; from?: unknown; to?: unknown } | null
-  const query = typeof record?.query === 'string' ? record.query.trim() : ''
-  if (query === '') return { ok: false, error: '缺少 query' }
-  // 检索域 chip（全部/活跃/归档）；未知值回退 'all'，新旧客户端互相兼容。
-  const archived: 'active' | 'archived' | 'all'
-    = record?.archived === 'active' ? 'active'
-    : record?.archived === 'archived' ? 'archived'
-    : 'all'
-  // 日期范围（R6）:本地日界,结束日含当天;无效值静默忽略（新旧客户端兼容）。
-  const fromMs = dayBoundaryMs(record?.from)
-  const toMs = record?.to === undefined ? undefined : dayBoundaryMs(record?.to, true)
-  const requestedLimit = typeof record?.limit === 'number' && Number.isSafeInteger(record.limit)
-    ? record.limit
-    : DEFAULT_LIMIT
-  const limit = Math.min(Math.max(1, requestedLimit), 100)
-  // Unknown or absent ordering degrades to relevance — never to an error, so an
-  // old client half talking to a new host half keeps working.
-  const sortBy: SwitchSearchSort = record?.sortBy === 'time' ? 'time' : 'relevance'
-  let types: readonly SwitchIndexContentType[]
-  if (Array.isArray(record?.types) && record.types.length > 0) {
-    types = record.types.filter((entry): entry is SwitchIndexContentType =>
-      entry === 'all' || entry === 'user' || entry === 'reply' || entry === 'tool')
-  } else {
-    types = ['user', 'reply']
-  }
-  // T7.3 硬依赖直连臂：检索语义（会话分组/类型加权/表面与归档日期过滤/
-  // 锚定节选）全部在 dsh-reference-session-collector 投影库侧完成（op=search&group=session，
-  // 语料已经过注入段剥离）。DRS 不可达 → 显式报错，**不回退本地索引**。
-  const kinds = resolveTypes(types)
-  try {
-    const items = await srt.drsSource.searchGrouped({
-      query,
-      kinds,
-      archived,
-      sortBy,
-      limit,
-      // 命中展开（面板「分开显示」开关）：同会话多命中各自成行；
-      // 非 true 一律缺省聚合（旧客户端零感知）。
-      ...(record?.expand === true ? { expand: true } : {}),
-      ...(requestHost === '' ? {} : { atHost: requestHost }),
-      ...(fromMs === undefined ? {} : { from: fromMs }),
-      ...(toMs === undefined ? {} : { to: toMs }),
-    })
-    return { ok: true, items }
-  } catch (err) {
-    return { ok: false, error: `dsh-reference-session-collector 搜索面不可用（硬依赖）：${String(err instanceof Error ? err.message : err)}` }
-  }
-}
-
-/** search-status: probe the independent index readiness and progress. */
-async function searchStatus(srt: SearchRuntime, requestHost = ''): Promise<unknown> {
-  const index = srt.index
-  const sync = index.sync.snapshot()
-  // T7.3：搜索可用性由 DRS 探针裁决（硬依赖）；本地引擎仅剩会话头元数据面。
-  const drsUp = await srt.drsSource.probe(requestHost)
-  return {
-    ok: true,
-    available: drsUp,
-    reason: drsUp ? undefined : 'drs-unavailable',
-    indexing: sync.state === 'syncing',
-    archivedSessions: index.engine.countArchived(),
-    archive: index.archiveReader.diagnostics(),
-    sync,
-    rebuild: index.rebuild,
-  }
-}
-
-/** index-status: full lifecycle surface for the settings row. */
-async function indexStatus(srt: SearchRuntime): Promise<unknown> {
-  const index = srt.index
-  const sync = index.sync.snapshot()
-  let indexed = sync.indexed
-  if (index.engine.isOpen) indexed = index.engine.countSessions()
-  return {
-    ok: true,
-    available: index.engine.isOpen && indexed > 0,
-    archivedSessions: index.engine.isOpen ? index.engine.countArchived() : 0,
-    // 归档子域的 owner 就是本包（history 子域）；保留探针字段形状，旧客户端
-    // 的「会话管家负责」提示语在新包语境下依然为真。
-    steward: detectSteward(),
-    driver: index.engine.driverLabel,
-    archive: index.archiveReader.diagnostics() as SwitchArchiveDiagnostics,
-    dir: index.layout.dir,
-    // 直接删除入口开关（功能①）：搜索面板据此渲染行内删除按钮；缺省关。
-    directDelete: srt.config().directDelete === true,
-    archives: await listArchives(index.layout).catch(() => []),
-    sync: { ...sync, indexed } satisfies SwitchSyncState,
-    rebuild: index.rebuild,
-  }
-}
-
-/**
- * index-rebuild: start the non-destructive 整理 (shadow build → atomic swap →
- * archives). Responds immediately; progress rides index-status.
- */
-async function indexRebuild(srt: SearchRuntime): Promise<{ ok: boolean; started?: boolean; error?: string }> {
-  const index = srt.index
-  if (index.rebuild.state === 'building' || index.rebuild.state === 'swapping') {
-    return { ok: false, error: '整理已在进行中' }
-  }
-  const sessionQuery = srt.sessionQuery
-  if (sessionQuery === undefined || sessionQuery.readSession === undefined) {
-    return { ok: false, error: 'sessionQuery 服务不可用，无法读取会话日志' }
-  }
-  const config = srt.config()
-  const keepArchives = Math.max(0, config.archiveKeep ?? SWITCH_DEFAULT_CONFIG.archiveKeep)
-  void rebuildIndex(
-    index.engine,
-    index.layout,
-    {
-      listSessions: () => sessionQuery.listSessions(),
-      readSession: async (sessionId: string) => {
-        const snapshot = await sessionQuery.readSession!(sessionId)
-        return { session: snapshot.session, events: snapshot.events }
-      },
-    },
-    keepArchives,
-    undefined,
-    srt.registry,
-    {
-      log: srt.log,
-      onState: (live) => { index.rebuild = live },
-      readSessionFromFile: srt.readSessionFromFile,
-    },
-  ).then((state) => {
-    index.rebuild = state
-  }).catch((err) => {
-    index.rebuild = {
-      state: 'error',
-      done: 0,
-      total: 0,
-      startedAt: Date.now(),
-      finishedAt: 0,
-      failures: [],
-      error: String(err instanceof Error ? err.message : err),
-    }
-  })
-  index.rebuild = { state: 'building', done: 0, total: 0, startedAt: Date.now(), finishedAt: 0, failures: [] }
-  return { ok: true, started: true }
-}
-
-/**
- * Tombs for the two methods the search package used to own before the
- * steward merge. A stale client bundle (browser refresh does not reload the
- * host half) must fail LOUDLY and be told where the feature went — a silent
- * 404 would read as "archiving is broken".
- */
-const MOVED_TO_HISTORY: Record<string, string> = {
-  'list-archived': 'session-history-list',
-  'archive-prune': 'session-history-prune',
-}
-
-/** Build the explicit "moved" error body for a tombstoned method. */
-function movedToHistory(method: string): { ok: false; error: string } {
-  const replacement = MOVED_TO_HISTORY[method]
-  return {
-    ok: false,
-    error: `"${method}" 已并入会话管家 history 子域：请改用 POST ${STEWARD_API_PREFIX}/${replacement}`,
-  }
-}
-
-/** index-export: dump the active index as JSON Lines. */
-async function indexExport(srt: SearchRuntime, res: ServerResponse): Promise<void> {
-  const index = srt.index
-  if (index.engine.isOpen === false) {
-    writeJson(res, 200, { ok: false, error: '独立索引未就绪' })
-    return
-  }
-  writeRaw(res, 200, 'application/x-ndjson; charset=utf-8', exportSnapshot(index.engine))
-}
-
-/** index-import: parse a JSON Lines snapshot and swap it in as the active index. */
-async function indexImport(srt: SearchRuntime, text: string) {
-  const index = srt.index
-  if (index.rebuild.state === 'building' || index.rebuild.state === 'swapping') {
-    return { ok: false, error: '整理/导入已在进行中' }
-  }
-  // Body is either raw JSON Lines or a JSON envelope { snapshot: "..." }.
-  if (text.includes('"snapshot"')) {
-    try {
-      const envelope = JSON.parse(text) as { snapshot?: unknown }
-      if (typeof envelope.snapshot === 'string') text = envelope.snapshot
-    } catch { /* treat as plain JSONL */ }
-  }
-  const parsed = parseSnapshot(text)
-  if (parsed.records.length === 0) return { ok: false, error: `快照无可导入会话（跳过 ${parsed.skipped} 行）` }
-  const config = srt.config()
-  const keepArchives = Math.max(0, config.archiveKeep ?? SWITCH_DEFAULT_CONFIG.archiveKeep)
-  void importIntoIndex(index.engine, index.layout, parsed.records, keepArchives, srt.log)
-    .then((state) => { index.rebuild = state })
-    .catch((err) => {
-      index.rebuild = {
-        state: 'error',
-        done: 0,
-        total: parsed.records.length,
-        startedAt: Date.now(),
-        finishedAt: 0,
-        failures: [],
-        error: String(err instanceof Error ? err.message : err),
-      }
-    })
-  index.rebuild = { state: 'building', done: 0, total: parsed.records.length, startedAt: Date.now(), finishedAt: 0, failures: [] }
-  return { ok: true, started: true, sessions: parsed.records.length, skipped: parsed.skipped }
-}
-
-/** ------------------------------------------------------------------ index service */
-
-/** The per-activation index service state, carried in the apply closure. */
-export interface SwitchIndexServiceState {
-  engine: SwitchIndexEngine
-  sync: SwitchWatermarkSync
-  layout: SwitchIndexLayout
-  rebuild: SwitchRebuildState
-  /** Official archive-set reader (registry first, storage-hub file fallback). */
-  archiveReader: ReturnType<typeof createArchiveSource>
-}
-
-/**
- * Everything the search handlers need, captured from the apply closure: the
- * optional live sessionQuery, the index service state, and the latest config.
- * Handlers never touch the cordis context — arbitrary property writes on a
- * Context are rejected ("cannot set property ... without provide").
- */
-export interface SearchRuntime {
+/** 管理台语料运行时（无索引、无 DRS；只认宿主 sessionQuery + 官方归档集合）。 */
+interface CatalogRuntime {
   sessionQuery: SwitchSessionQuery | undefined
-  index: SwitchIndexServiceState
-  /** DRS 直连客户端（T7.3 硬依赖：内容分组检索臂唯一来源 + 可性探针）。 */
-  drsSource: DrsCorpusSource
-  config: () => Required<StewardConfig> & SwitchSearchConfig
-  /** Lazy official archive-set source (registry first, file fallback). */
   registry: () => { archivedSessionIds: readonly string[] }
-  /** Cordis logger bridge ([session-steward] prefixed). */
-  log: (msg: string) => void
-  /** 文件级兜底读取器（重建钩子透传;见 SwitchWatermarkSync 注释）。 */
-  readSessionFromFile: (sessionId: string) => Promise<{
-    session: { id: string; version: number; createdAt?: number; cwd?: string }
-    events: readonly SwitchRawEvent[]
-  } | undefined>
 }
 
-/** JSON 面的搜索子域方法分发（index-export/import 走原始体，在路由层特判）。 */
-export async function handleIndexMethod(method: string, payload: unknown, srt: SearchRuntime, requestHost = ''): Promise<unknown> {
-  if (method === 'list-sessions') return await listSessions(srt)
-  if (method === 'content-search') return await contentSearch(srt, payload, requestHost)
-  if (method === 'search-status') return await searchStatus(srt, requestHost)
-  if (method === 'index-status') return await indexStatus(srt)
-  if (method === 'index-rebuild') return await indexRebuild(srt)
-  return { ok: false, error: `未知的 switch-search API 方法 "${method}"` }
-}
-
-/**
- * 官方 workspaceRegistry 的内存归档面（结构化镜像）。0.1.7+ 双方法齐全,
- * 0.1.5 只有 archiveSession;方法自带 setState 持久化 —— 调用即生效即落盘,
- * **免重启**。探测到才走内存路径,否则降级文件编辑（requiresRestart）。
- */
 interface MemoryRegistryFace {
   archiveSession?(sessionId: string, options?: { stopActivity?: boolean }): Promise<void>
   unarchiveSession?(sessionId: string): Promise<void>
@@ -769,7 +419,7 @@ async function runMemoryArchiveOps(
 
 /** 收藏文件候选（与管家其余域同一 dshHome 纪律）。 */
 function favoritesPathsFor(dshHome: string): string[] {
-  return [join(dshHome, 'storages', 'session-steward-favorites.json')]
+  return [join(dshHome, 'storages', 'manage-sessions-favorites.json')]
 }
 
 /** 本地日界（YYYY-MM-DD → epoch ms;nextDay 为排他上界）。非法返回 undefined。 */
@@ -795,26 +445,17 @@ function validSessionIds(value: unknown): string[] | undefined {
  * @param payload - 已解析的请求体。
  * @param runtime - 运行时依赖。
  */
-/** 现代宿主的只读投影：把运行时配置拆成两命名空间形状（describe 用）。 */
+/** 现代宿主的只读投影：把运行时配置按命名空间形状输出（describe 用）。 */
 function configSnapshotProjection(
-  config: Required<StewardConfig> & Partial<SwitchSearchConfig>,
+  config: Required<StewardConfig>,
 ): Record<string, Record<string, unknown>> {
   return {
     [STEWARD_SETTINGS_NAMESPACE]: {
       enabled: config.enabled,
       historyFiles: config.historyFiles,
       healthCheck: config.healthCheck,
-      search: config.search,
       // 老线卡回读面：漏字段 = 拨了显示不跟（写路 bridge schema 已在位）。
       directDelete: config.directDelete,
-    },
-    [SWITCH_SEARCH_SETTINGS_NAMESPACE]: {
-      enabled: config.enabled,
-      defaultMode: config.defaultMode ?? SWITCH_DEFAULT_CONFIG.defaultMode,
-      autoSync: config.autoSync ?? SWITCH_DEFAULT_CONFIG.autoSync,
-      syncIntervalMs: config.syncIntervalMs ?? SWITCH_DEFAULT_CONFIG.syncIntervalMs,
-      archiveKeep: config.archiveKeep ?? SWITCH_DEFAULT_CONFIG.archiveKeep,
-      indexDir: config.indexDir ?? SWITCH_DEFAULT_CONFIG.indexDir,
     },
   }
 }
@@ -828,9 +469,9 @@ export async function handleMethod(
   // 设置桥方法不受子域闸管——关掉 enabled/historyFiles/healthCheck 后仍必须
   // 能读配置（否则卡片永远读不到「把它打开」的开关）。
   const settingsMethods = method === 'settings-describe' || method === 'settings-mutate'
-  const known = [...HISTORY_METHODS, ...HEALTH_METHODS, 'settings-describe', 'settings-mutate'] as readonly string[]
+  const known = [...HISTORY_METHODS, ...HEALTH_METHODS, 'session-catalog', 'settings-describe', 'settings-mutate'] as readonly string[]
   if (!known.includes(method)) {
-    return { ok: false, error: `未知的 session-steward API 方法 "${method}"` }
+    return { ok: false, error: `未知的 manage-sessions API 方法 "${method}"` }
   }
   if (!settingsMethods && !methodEnabled(method, config)) {
     const which = (HISTORY_METHODS as readonly string[]).includes(method) ? 'historyFiles' : 'healthCheck'
@@ -851,6 +492,9 @@ export async function handleMethod(
   if (method === 'session-history-list') {
     return await listHistory(runtime.registry, undefined, storagePathsFor(runtime.dshHome), runtime.dshHome)
   }
+  if (method === 'session-catalog') {
+    return await listSessions(runtime)
+  }
   if (method === 'session-history-archive') {
     const request = (payload ?? {}) as { sessionIds?: unknown }
     const ids = validSessionIds(request.sessionIds)
@@ -861,7 +505,6 @@ export async function handleMethod(
     if (mem?.archiveSession !== undefined) {
       const before = new Set(mem.archivedSessionIds ?? [])
       const { succeeded, failures } = await runMemoryArchiveOps(mem, ids, 'archive')
-      runtime.index?.onArchive(succeeded)
       const total = (mem.archivedSessionIds ?? []).length
       return {
         ok: true,
@@ -871,9 +514,7 @@ export async function handleMethod(
         ...(failures.length === 0 ? {} : { failures }),
       }
     }
-    const result = archiveHistory(payload, runtime.log, storagePathsFor(runtime.dshHome))
-    if (result.ok) runtime.index?.onArchive(ids)
-    return result
+    return archiveHistory(payload, runtime.log, storagePathsFor(runtime.dshHome))
   }
   if (method === 'session-history-prune') {
     const request = (payload ?? {}) as { sessionIds?: unknown }
@@ -882,7 +523,6 @@ export async function handleMethod(
     const mem = runtime.registry() as MemoryRegistryFace | undefined
     if (mem?.unarchiveSession !== undefined && ids !== undefined) {
       const { succeeded, failures } = await runMemoryArchiveOps(mem, ids, 'unarchive')
-      runtime.index?.onUnarchive(succeeded)
       const remaining = (mem.archivedSessionIds ?? []).length
       return {
         ok: true,
@@ -892,9 +532,7 @@ export async function handleMethod(
         ...(failures.length === 0 ? {} : { failures }),
       }
     }
-    const result = pruneHistory(payload, runtime.log, storagePathsFor(runtime.dshHome))
-    if (result.ok && ids !== undefined) runtime.index?.onUnarchive(ids)
-    return result
+    return pruneHistory(payload, runtime.log, storagePathsFor(runtime.dshHome))
   }
   if (method === 'session-history-purge') {
     const request = (payload ?? {}) as { sessionIds?: unknown }
@@ -925,13 +563,6 @@ export async function handleMethod(
           failures.push({ sessionId: id, reason: String(err instanceof Error ? err.message : err) })
         }
       }
-      runtime.index?.onPurged(succeeded)
-      // 墓碑台账（功能②前置）：只对成功退场的 id 落账；写失败不影响删除结果。
-      appendRetiredTombstones(succeeded, {
-        ...(runtime.tombstoneDir === undefined ? {} : { dir: runtime.tombstoneDir() }),
-        source: 'steward-purge-memory',
-        log: runtime.log,
-      })
       return {
         ok: true,
         purged: succeeded.length,
@@ -940,22 +571,10 @@ export async function handleMethod(
         ...(failures.length === 0 ? {} : { failures }),
       }
     }
-    const result = purgeHistory(payload, runtime.log, {
+    return purgeHistory(payload, runtime.log, {
       dshHome: runtime.dshHome,
       searchPaths: storagePathsFor(runtime.dshHome),
     })
-    // 联动只在真删成功后：失败条目留在索引里（还能搜到,如实）。
-    if (result.ok && ids !== undefined) {
-      const failed = new Set((result.failures ?? []).map(f => f.sessionId))
-      const gone = ids.filter((id) => !failed.has(id))
-      runtime.index?.onPurged(gone)
-      appendRetiredTombstones(gone, {
-        ...(runtime.tombstoneDir === undefined ? {} : { dir: runtime.tombstoneDir() }),
-        source: 'steward-purge-fallback',
-        log: runtime.log,
-      })
-    }
-    return result
   }
 
   if (method === 'session-history-favorites-list') {
@@ -974,7 +593,12 @@ export async function handleMethod(
       ok: true,
       namespace: STEWARD_SETTINGS_NAMESPACE,
       prefix: STEWARD_API_PREFIX,
-      switches: { enabled: config.enabled, historyFiles: config.historyFiles, healthCheck: config.healthCheck },
+      switches: {
+        enabled: config.enabled,
+        historyFiles: config.historyFiles,
+        healthCheck: config.healthCheck,
+        directDelete: config.directDelete,
+      },
       historyMethods: [...HISTORY_METHODS],
       healthMethods: [...HEALTH_METHODS],
       home: runtime.dshHome,
@@ -1129,43 +753,28 @@ export async function handleMethod(
  * @param ctx - host 插件上下文（webServer / webStartup（旧名 webRuntime）/ 可选 sessionQuery、workspaceRegistry）。
  * @param config - 组合条目（0.1.7：`.volatile()` 字段为 live ref）。
  */
-export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearchConfig> = {}): void {
+export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
   // 0.1.7：volatile 字段每次读取解引出最新快照（开关即时生效），不再有任何
   // settings 注册调用。
   // ≤0.1.5 补口（3085 实锤）：老线组合 config 是静态缺省，卡的写落在宿主
   // settings 服务（下方 settingsBridge）——不叠加则「拨得动、不生效」；
   // 已写键才采信（型别不符/缺席回退组合值），桥未咬合（0.1.7+）零叠加。
-  const current = (): Required<StewardConfig> & Required<SwitchSearchConfig> => {
-    const { steward, search } = bridgeOverlay(settingsBridge)
+  const current = (): Required<StewardConfig> => {
+    const { steward } = bridgeOverlay(settingsBridge)
     const bool = (doc: Record<string, unknown>, key: string, v: boolean): boolean =>
       typeof doc[key] === 'boolean' ? (doc[key] as boolean) : v
-    const num = (doc: Record<string, unknown>, key: string, v: number): number =>
-      typeof doc[key] === 'number' && Number.isFinite(doc[key] as number) ? (doc[key] as number) : v
-    const str = (doc: Record<string, unknown>, key: string, v: string): string =>
-      typeof doc[key] === 'string' ? (doc[key] as string) : v
-    const mode = (v: 'title' | 'content'): 'title' | 'content' =>
-      search['defaultMode'] === 'title' || search['defaultMode'] === 'content' ? (search['defaultMode'] as 'title' | 'content') : v
     return {
       enabled: bool(steward, 'enabled', readVolatileValue(config.enabled) ?? DEFAULT_CONFIG.enabled),
       historyFiles: bool(steward, 'historyFiles', readVolatileValue(config.historyFiles) ?? DEFAULT_CONFIG.historyFiles),
       healthCheck: bool(steward, 'healthCheck', readVolatileValue(config.healthCheck) ?? DEFAULT_CONFIG.healthCheck),
-      search: bool(steward, 'search', readVolatileValue(config.search) ?? DEFAULT_CONFIG.search),
       directDelete: bool(steward, 'directDelete', readVolatileValue(config.directDelete) ?? DEFAULT_CONFIG.directDelete),
-      defaultMode: mode(readVolatileValue(config.defaultMode) ?? SWITCH_DEFAULT_CONFIG.defaultMode),
-      autoSync: bool(search, 'autoSync', readVolatileValue(config.autoSync) ?? SWITCH_DEFAULT_CONFIG.autoSync),
-      syncIntervalMs: num(search, 'syncIntervalMs', readVolatileValue(config.syncIntervalMs) ?? SWITCH_DEFAULT_CONFIG.syncIntervalMs),
-      archiveKeep: num(search, 'archiveKeep', readVolatileValue(config.archiveKeep) ?? SWITCH_DEFAULT_CONFIG.archiveKeep),
-      indexDir: str(search, 'indexDir', readVolatileValue(config.indexDir) ?? SWITCH_DEFAULT_CONFIG.indexDir),
-      // corpusSource/drsBaseUrl 不在 legacy 桥 schema（老线无 DRS 接线面）：只认组合值。
-      corpusSource: readVolatileValue(config.corpusSource) ?? SWITCH_DEFAULT_CONFIG.corpusSource,
-      drsBaseUrl: str(search, 'drsBaseUrl', readVolatileValue(config.drsBaseUrl) ?? SWITCH_DEFAULT_CONFIG.drsBaseUrl),
     }
   }
 
   const log = (message: string): void => {
     try {
       const logger = (ctx as unknown as { logger?: { info?: (m: string) => void; warn?: (m: string) => void } }).logger
-      logger?.info?.(`[session-steward] ${message}`)
+      logger?.info?.(`[manage-sessions] ${message}`)
     } catch { /* 日志绝不允许破坏宿主 */ }
   }
 
@@ -1226,197 +835,9 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
     attribute: attributor,
     log,
     cache: new HealthCache(),
-    // 管家写侧 → 索引联动：引擎未开（search=false）时为 no-op。
-    index: {
-      onArchive: (ids) => {
-        if (!engine.isOpen) return
-        try { for (const id of ids) engine.setArchivedOne(id, true) } catch (err) { log(`index onArchive failed: ${String(err instanceof Error ? err.message : err)}`) }
-      },
-      onUnarchive: (ids) => {
-        if (!engine.isOpen) return
-        try { for (const id of ids) engine.setArchivedOne(id, false) } catch (err) { log(`index onUnarchive failed: ${String(err instanceof Error ? err.message : err)}`) }
-      },
-      onPurged: (ids) => {
-        if (!engine.isOpen) return
-        try { for (const id of ids) engine.removeSession(id) } catch (err) { log(`index onPurged failed: ${String(err instanceof Error ? err.message : err)}`) }
-      },
-    },
-    // 墓碑台账随索引目录（indexDir 自定义时同源，否则 ~/.dsh-switch-search）。
-    tombstoneDir: () => {
-      const dir = current().indexDir
-      return dir !== '' ? dir : defaultTombstoneDir()
-    },
+    // 管理台语料：宿主 sessionQuery（惰性取，装载序不保证）。
+    sessionQuery: ctx.get('sessionQuery') as SwitchSessionQuery | undefined,
   }
-
-  // ── 搜索子域运行时：独立索引生命周期（引擎打开、水位同步、后台轮询）。
-  // 全部是后台工作；HTTP 保持即时。
-  const initial = current()
-  const sessionQuery = ctx.get('sessionQuery') as SwitchSessionQuery | undefined
-  const archiveReader = createArchiveSource(() => ctx.get('workspaceRegistry') as SwitchWorkspaceRegistry | undefined)
-  const indexLayout: SwitchIndexLayout = {
-    ...DEFAULT_INDEX_LAYOUT,
-    dir: resolveIndexDir(initial.indexDir || process.env[INDEX_DIR_ENV]),
-  }
-  const engine = new SwitchIndexEngine({ path: `${indexLayout.dir}/${indexLayout.active}` })
-  // 文件级兜底读取器：health 侧的多帧 zstd 读取器直接读转录文件,映射成
-  // SwitchRawEvent 流（version 置 0 —— 语料头版本由调用方钉,不依赖文件）。
-  const readSessionFromFile = async (sessionId: string): Promise<{
-    session: { id: string; version: number; createdAt?: number; cwd?: string }
-    events: readonly SwitchRawEvent[]
-  } | undefined> => {
-    try {
-      const logPath = findSessionLog(sessionId, resolvedHome)
-      if (logPath === undefined) return undefined
-      const decoded = decodeSessionLogFile(logPath)
-      return {
-        session: { id: sessionId, version: 0 },
-        events: decoded.events.map(event => ({
-          seq: event.seq,
-          type: event.type,
-          time: event.time,
-          surfaceOp: event.surfaceOp,
-          data: event.data,
-        })),
-      }
-    } catch (err) {
-      log(`file fallback read failed for ${sessionId}: ${String(err instanceof Error ? err.message : err)}`)
-      return undefined
-    }
-  }
-
-  // 投影缓存标题第三源:官方逐会话缓存文件 record.rows.title.val(与管家
-  // history 子域同一形状;读不到/畸形一律空串,绝不抛进同步)。
-  const readProjectionTitle = (sessionId: string): string => {
-    try {
-      const path = join(resolvedHome, 'storages', 'session_projcache', 'sessions', `${sessionId}.json`)
-      if (!existsSync(path)) return ''
-      const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
-        record?: { rows?: { title?: { val?: unknown } } }
-      }
-      const value = parsed.record?.rows?.title?.val
-      return typeof value === 'string' ? value : ''
-    } catch {
-      return ''
-    }
-  }
-
-  // DRS 语料源（T7.1）：corpusSource='drs' 时索引语料改从 dsh-reference-session-collector
-  // 投影库取（docs 直插引擎）；DRS 不可达时同步轮内部整轮回退原生
-  // sessionQuery + 文件兜底。装配在 apply 期一次性成形——corpusSource 切换
-  // 重启后生效（水位语义切换本就伴随一轮全量重灌）。Host 头回显首个
-  // trustedHosts 条目：DRS 信任门是精确匹配，条目省略端口时 URL 带端口会失配。
-  const trustedHosts = webRuntime?.trustedHosts
-  const drsSource = new DrsCorpusSource({
-    baseUrl: resolveDrsBaseUrl(initial.drsBaseUrl, trustedHosts),
-    hostHeader: trustedHosts !== undefined && trustedHosts.length > 0 ? trustedHosts[0] : undefined,
-    log,
-  })
-
-  const indexState: SwitchIndexServiceState = {
-    engine,
-    archiveReader,
-    sync: new SwitchWatermarkSync(engine, {
-      listSessions: () => sessionQuery?.listSessions() ?? Promise.resolve([]),
-      readSession: async (sessionId: string) => {
-        if (sessionQuery?.readSession === undefined) throw new Error('sessionQuery.readSession 不可用')
-        return sessionQuery.readSession(sessionId)
-      },
-      readTitleSnapshots: sessionQuery === undefined
-        ? undefined
-        : (ids) => sessionQuery.readTitleSnapshots(ids),
-    }, () => ({ archivedSessionIds: archiveReader.read().ids }), log, readSessionFromFile, readProjectionTitle, initial.corpusSource === 'native' ? undefined : drsSource),
-    layout: indexLayout,
-    rebuild: { state: 'idle', done: 0, total: 0, startedAt: 0, finishedAt: 0, failures: [] },
-  }
-  const srt: SearchRuntime = {
-    sessionQuery,
-    index: indexState,
-    drsSource,
-    config: () => current(),
-    registry: () => ({ archivedSessionIds: archiveReader.read().ids }),
-    log,
-    readSessionFromFile,
-  }
-
-  const initialConfig = current()
-  if (initialConfig.enabled === false) {
-    log('enabled=false：不注册任何路由')
-    return
-  }
-
-  let syncTimer: ReturnType<typeof setInterval> | undefined
-  const scheduleSync = (intervalMs: number): void => {
-    if (syncTimer !== undefined) clearInterval(syncTimer)
-    if (intervalMs <= 0) return
-    syncTimer = setInterval(() => {
-      const latest = current()
-      if (latest.enabled === false || latest.search === false || latest.autoSync === false) return
-      void indexState.sync.poll().catch(() => {})
-    }, Math.max(5_000, intervalMs))
-  }
-
-  // Realtime titles. A rename appends the log-only `session/title` event, which
-  // reaches the index one poll later (default 30s). Folding the title straight
-  // off the append feed removes that latency without a full pass. The listener
-  // is deliberately trivial — this feed carries EVERY appended event, streaming
-  // chunks included — and never throws, because it runs inside the host's
-  // fire-and-forget append publication.
-  let pendingTitleIds = new Set<string>()
-  let titleTimer: ReturnType<typeof setTimeout> | undefined
-  const flushPendingTitles = (): void => {
-    titleTimer = undefined
-    const ids = [...pendingTitleIds]
-    pendingTitleIds = new Set()
-    if (ids.length === 0) return
-    void indexState.sync.refreshTitles(ids).catch(() => {})
-  }
-  ctx.effect(() => {
-    const bus = ctx as unknown as {
-      on?: (name: string, listener: (session: { id?: unknown }, event: { type?: unknown }) => void) => () => void
-    }
-    if (typeof bus.on !== 'function') return () => {}
-    try {
-      return bus.on('session/event', (session, event) => {
-        if (event?.type !== TITLE_EVENT_TYPE) return
-        const latest = current()
-        if (latest.enabled === false || latest.search === false || latest.autoSync === false) return
-        const id = session?.id
-        if (typeof id !== 'string' || id === '') return
-        pendingTitleIds.add(id)
-        if (titleTimer !== undefined) return
-        titleTimer = setTimeout(flushPendingTitles, TITLE_FLUSH_MS)
-      })
-    } catch {
-      // No event bus on this host: the poll stays the fallback path.
-      return () => {}
-    }
-  }, 'dsh-session-steward: realtime titles')
-
-  // 索引生命周期：恢复巡检 → 打开引擎 → 首轮水位同步 → 定时轮询。
-  // search=false 时整套不启动（引擎不开、无后台任务）。
-  if (initialConfig.search !== false) {
-    void (async () => {
-      try {
-        const recovered = await recoverIndex(indexLayout, log)
-        if (recovered.length > 0) log(`index recovery applied ${recovered.length} fix(es)`)
-      } catch (err) {
-        log(`index recovery failed: ${String(err instanceof Error ? err.message : err)}`)
-      }
-      await engine.open().catch(() => {})
-      log(`index open: driver=${engine.driverLabel} dir=${indexLayout.dir}`)
-      if (engine.driverLabel === 'node:sqlite') {
-        log('tip: optional speedup not active — approve the better-sqlite3 build (add "better-sqlite3@*: true" under allowBuilds in the profile pnpm-workspace.yaml, then reinstall) to speed up index rebuilds; everything works without it')
-      }
-      if (initialConfig.autoSync !== false) await indexState.sync.poll().catch(() => {})
-      scheduleSync(initialConfig.syncIntervalMs ?? SWITCH_DEFAULT_CONFIG.syncIntervalMs)
-    })()
-  }
-
-  ctx.effect(() => () => {
-    if (syncTimer !== undefined) clearInterval(syncTimer)
-    if (titleTimer !== undefined) clearTimeout(titleTimer)
-    engine.close()
-  }, 'dsh-session-steward: index lifecycle')
 
   // ── 管家子域路由。
   ctx.effect(() => webServer.register({
@@ -1435,7 +856,7 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
       const prefix = `${STEWARD_API_PREFIX}/`
       const method = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : undefined
       if (method === undefined || method === '' || method.includes('/')) {
-        writeJson(res, 404, { ok: false, error: `unknown session-steward API method` })
+        writeJson(res, 404, { ok: false, error: `unknown manage-sessions API method` })
         return
       }
       try {
@@ -1446,54 +867,5 @@ export function apply(ctx: Context, config: Partial<StewardConfig & SwitchSearch
         writeJson(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err) })
       }
     },
-  }), 'dsh-session-steward: /session-steward/api route')
-
-  // ── 搜索子域路由（历史前缀 /switch-search/api）。
-  ctx.effect(() => webServer.register({
-    kind: 'prefix',
-    path: SWITCH_API_PREFIX,
-    handler: async (req: IncomingMessage, res: ServerResponse) => {
-      if (!isTrustedApiRequest(req, webRuntime.trustedHosts)) {
-        writeJson(res, 403, { ok: false, error: 'forbidden' })
-        return
-      }
-      if (req.method !== 'POST') {
-        writeJson(res, 405, { ok: false, error: 'method not allowed' })
-        return
-      }
-      const pathname = new URL(req.url ?? '/', 'http://dsh.internal').pathname
-      const prefix = `${SWITCH_API_PREFIX}/`
-      const method = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : undefined
-      if (method === undefined || method === '' || method.includes('/')) {
-        writeJson(res, 404, { ok: false, error: 'unknown switch-search API method' })
-        return
-      }
-      // 墓碑：这两个方法在分包时代属搜索索引包，合并后已归 history 子域。
-      // 旧 client bundle 必须响亮失败并指路，静默 404 会被读成「归档坏了」。
-      if (method in MOVED_TO_HISTORY) {
-        writeJson(res, 410, movedToHistory(method))
-        return
-      }
-      try {
-        if (methodEnabled(method, current()) === false) {
-          writeJson(res, 200, { ok: false, error: `子域已关闭（search=false）：${method} 未注册` })
-          return
-        }
-        if (method === 'index-export') {
-          await indexExport(srt, res)
-          return
-        }
-        if (method === 'index-import') {
-          // The body is raw JSON Lines (or a { snapshot } envelope), not JSON.
-          const text = await readRawBody(req)
-          writeJson(res, 200, await indexImport(srt, text))
-          return
-        }
-        const payload = await readJsonBody(req)
-        writeJson(res, 200, await handleIndexMethod(method, payload, srt, String(req.headers.host ?? '')))
-      } catch (err) {
-        writeJson(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  }), 'dsh-session-steward: /switch-search/api route')
+  }), 'dsh-manage-sessions: /manage-sessions/api route')
 }

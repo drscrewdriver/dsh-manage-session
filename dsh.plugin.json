@@ -1,19 +1,19 @@
 {
-  "id": "dsh-session-steward",
-  "name": "dsh-session-steward",
-  "version": "0.5.6-local.17",
+  "id": "dsh-manage-sessions",
+  "name": "dsh-manage-sessions",
+  "version": "2.0.3",
   "description": {
-    "en": "Session Steward (merged package): archive browsing & cleanup, a four-gate session health checkup with reversible prescriptions, plus an independent FTS5 content-search index (title/content modes, incremental sync, non-destructive rebuild, snapshot export/import). Never rewrites session logs.",
-    "zh": "会话管家（合并包）：归档浏览与清理、四门体检（可逆处方），外加独立 FTS5 会话内容搜索（标题/内容双模式、增量同步、非破坏性整理、快照导入导出）。不改写会话日志。"
+    "en": "Session Manager: one console over active and archived sessions (browse, filter, favorite, archive/unarchive, batch purge, delete) plus a four-gate session health checkup. The entry sits in the sidebar top tool slot right after the Plugins row when the host provides one, and falls back to the footer otherwise. No index of its own and no DRS dependency — search lives in dsh-search-index. Never rewrites session logs. (formerly dsh-session-steward)",
+    "zh": "会话管理台：一屏管理活跃与归档会话（列表、筛选、收藏、归档与取消归档、批量清理、删除），外加四门会话体检。宿主提供侧栏顶部工具槽位时入口落在「插件」行之后，否则回落底栏。不自建索引、不依赖 DRS——搜索能力在 dsh-search-index。不改写会话日志。（原名 dsh-session-steward）"
   },
-  "homepage": "https://github.com/drscrewdriver/dsh-session-steward",
+  "homepage": "https://github.com/drscrewdriver/dsh-manage-sessions",
   "repository": {
     "type": "git",
-    "url": "https://github.com/drscrewdriver/dsh-session-steward.git"
+    "url": "https://github.com/drscrewdriver/dsh-manage-sessions.git"
   },
   "license": "MIT",
   "engines": {
-    "dsh": "0.1.0-rc.2 || 0.1.0-rc.3 || 0.1.0-rc.6 || 0.1.0-rc.7 || 0.1.0-rc.8 || 0.1.1-rc.1 || 0.1.1-rc.2 || 0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.5-rc.3 || 0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2"
+    "dsh": "0.1.0-rc.2 || 0.1.0-rc.3 || 0.1.0-rc.6 || 0.1.0-rc.7 || 0.1.0-rc.8 || 0.1.1-rc.1 || 0.1.1-rc.2 || 0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.5-rc.3 || 0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.3"
   },
   "components": {
     "host": "lib/index.js",

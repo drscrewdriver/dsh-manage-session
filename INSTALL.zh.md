@@ -17,9 +17,9 @@
 本指南中的占位符：
 
 - `<profile>`：要改动的 DSH profile，通常是 `web`；
-- `dsh-session-steward`：npm 包名，同时也是运行时插件 ID。
+- `dsh-manage-sessions`：npm 包名，同时也是运行时插件 ID。
 
-> **支持的 DSH 范围：`>=0.1.0-rc.6 <0.2.0-0`。**
+> **支持的 DSH 范围：`engines.dsh` 的逐 rc 枚举白名单（`0.1.0-rc.2` … `0.2.1-rc.3`，逐版本实测）。**
 >
 > 该范围同时写在 `package.json` 与 `dsh.plugin.json` 的 `engines.dsh` 中，也与本插件为其 `@deepseek-ai/dsh-client-ui-slots` 依赖已经声明的 `^0.1.0-rc.6` 下界一致。安装前先用 `dsh --version` 确认当前版本。
 
@@ -36,7 +36,7 @@ ls "${DSH_HOME:-$HOME/.dsh}/profiles"
 ## 1. 官方安装
 
 ```bash
-dsh plugin --profile <profile> add dsh-session-steward -w
+dsh plugin --profile <profile> add dsh-manage-sessions -w
 ```
 
 （当 profile 是 pnpm workspace 根时，如 `web`，`-w` 是必需的。）
@@ -44,7 +44,7 @@ dsh plugin --profile <profile> add dsh-session-steward -w
 显式安装指定版本：
 
 ```bash
-dsh plugin --profile <profile> add dsh-session-steward@0.1.0-alpha.6 -w
+dsh plugin --profile <profile> add dsh-manage-sessions@1.0.0 -w
 ```
 
 官方 CLI 会自动更新 profile 依赖、锁文件与 `dsh.profile.bundles`。不要手工添加 YAML 行。
@@ -55,17 +55,17 @@ DSH 运行时使用 pnpm 11，其 `minimumReleaseAge` 策略可能拦截刚发�
 
 ```yaml
 minimumReleaseAgeExclude:
-  - dsh-session-steward@0.1.0-alpha.6
+  - dsh-manage-sessions@1.0.0
 ```
 
 ## 2. 重启宿主
 
-**安装或升级后必须重启 DSH。** 仅刷新浏览器页面无效：宿主半身在启动时注册 `/session-steward/api` 路由与设置命名空间，且归档来源需要在宿主重启后才会反映清理结果。
+**安装或升级后必须重启 DSH。** 仅刷新浏览器页面无效：宿主半身在启动时注册 `/manage-sessions/api` 路由与设置命名空间，且归档来源需要在宿主重启后才会反映清理结果。
 
 ## 3. 升级
 
 ```bash
-dsh plugin --profile <profile> update dsh-session-steward -w
+dsh plugin --profile <profile> update dsh-manage-sessions -w
 ```
 
 升级后重启 DSH。
@@ -76,18 +76,18 @@ dsh plugin --profile <profile> update dsh-session-steward -w
 
 ```bash
 #    ~/.dsh/profiles/<profile>/package.json dependencies:
-#      "dsh-session-steward": "link:<absolute path to dsh-session-steward>"
+#      "dsh-manage-sessions": "link:<absolute path to dsh-manage-sessions>"
 #    ~/.dsh/profiles/<profile>/cordis.patch.yml:
 #      - insert:
-#          - id: dsh-session-steward
-#            name: dsh-session-steward
+#          - id: dsh-manage-sessions
+#            name: dsh-manage-sessions
 cd ~/.dsh/profiles/<profile> && pnpm install && dsh web
 ```
 
 或用官方 CLI 直接指定本地路径（无需联网）：
 
 ```bash
-dsh plugin --profile <profile> add /absolute/path/to/dsh-session-steward -w
+dsh plugin --profile <profile> add /absolute/path/to/dsh-manage-sessions -w
 ```
 
 从源码检出构建时用以下脚本：
@@ -106,9 +106,9 @@ pnpm build         # tsc -b && tsdown → lib/index.js + lib/index.d.ts + lib/cl
 检查依赖与已安装版本：
 
 ```bash
-grep -n "dsh-session-steward" \
+grep -n "dsh-manage-sessions" \
   "${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/package.json"
-node -p "require('${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/node_modules/dsh-session-steward/package.json').version"
+node -p "require('${DSH_HOME:-$HOME/.dsh}/profiles/<profile>/node_modules/dsh-manage-sessions/package.json').version"
 ```
 
 检查官方装配：
@@ -120,18 +120,18 @@ dsh --profile <profile> --dump-default-config
 其中必须包含：
 
 ```yaml
-- id: dsh-session-steward
-  name: dsh-session-steward
+- id: dsh-manage-sessions
+  name: dsh-manage-sessions
 ```
 
 ## 6. 验证插件
 
-重启后，侧边栏入口 `dsh-session-steward` 可用，设置区使用 `session-steward` 命名空间。请确认：
+重启后，侧边栏入口 `dsh-manage-sessions` 可用，设置区使用 `manage-sessions` 命名空间。请确认：
 
 1. 两个开关均开启时，**养老院**与**体检**两个页签都会渲染。
 2. 关闭 `historyFiles` 后「养老院」页签消失，且所有 `session-history-*` 调用返回显式的 disabled 错误。
 3. 关闭 `healthCheck` 后「体检」页签消失，且所有 `session-health-*` 调用返回显式的 disabled 错误。
-4. 对 `/session-steward/api` 调用未识别的方法时返回显式错误，而不是静默成功。
+4. 对 `/manage-sessions/api` 调用未识别的方法时返回显式错误，而不是静默成功。
 
 关闭的子域返回 `{ ok: false, error: '子域已关闭（…=false）：<method> 未注册' }` —— 本插件不留空壳。
 
@@ -150,7 +150,7 @@ dsh --profile <profile> --dump-default-config
 ## 8. 卸载
 
 ```bash
-dsh plugin --profile <profile> remove dsh-session-steward
+dsh plugin --profile <profile> remove dsh-manage-sessions
 ```
 
 卸载后重启 DSH。
