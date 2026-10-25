@@ -26,6 +26,20 @@ A DSH web plugin: **one console over active and archived sessions + a four-gate 
 Supports DSH 0.1.0-rc.2, 0.1.0-rc.3, 0.1.0-rc.6, 0.1.0-rc.7, 0.1.0-rc.8, 0.1.1-rc.1, 0.1.1-rc.2, 0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.5-rc.3, 0.1.7-rc.1, 0.1.7-rc.2, 0.2.0-rc.1, 0.2.0-rc.2, 0.2.1-rc.1, 0.2.1-rc.2, 0.2.1-rc.3 (enumerated peers — a per-rc tested whitelist; alpha/beta releases are out of scope).
 <!-- hosts-sync:end -->
 
+## Screenshots
+
+**Current form** — the entry sits in the sidebar's top tool row (after Plugins, before More) and opens the
+session console: three-column cards grouped by workspace, workspace / domain (all · active · archived)
+filters, favorites, and batch archive · unarchive · purge on the selection (destructive steps ask twice):
+
+![Session console](assets/new-manager.png)
+
+**Historical forms** (for lineage only, not the current UI):
+
+| Merged package era (1.x: search included, two-tab dialog, retired) | Earlier (≤0.5.7: entry at the sidebar foot) |
+|---|---|
+| ![Old two-tab dialog](assets/old-archive.png) | ![Old sidebar footer entry](assets/left-sidebar-old.png) |
+
 ## Install
 
 ```bash
