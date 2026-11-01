@@ -13,7 +13,7 @@
  * （settingsScope.bind 是数据死路，见 bridge-scope.ts）；配置写入同链路。
  */
 import type { Context } from 'cordis'
-import { createElement, useState, useSyncExternalStore, type ReactElement } from 'react'
+import { createElement, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react'
 import {
   DEFAULT_CONFIG,
   STEWARD_ENTRY_ID,
@@ -330,7 +330,13 @@ export function apply(ctx: Context): void {
           order: 40,
           label: () => translate((locale as { bind?: (n: string) => CardTranslate } | undefined)?.bind?.(NS), 'family.title'),
           locale: NS,
-          inject: () => ({ hooks: { tabs: familyTabsHooks } }),
+          inject: () => ({
+            hooks: { tabs: familyTabsHooks },
+            // 接管时本插件既是 owner 又是成员：自宣 dsh-family.tab 不触发自身 inject（账本恒无本卡），
+            // 故本卡内联直挂（ownId/renderOwn）。scope 走 bound（apply 级原生/桥两轨兜底）。
+            ownId: STEWARD_ENTRY_ID,
+            renderOwn: () => createElement(StewardSettingsCard, { scope: bound as StewardCardScope }),
+          }),
           children: { [FAMILY_CHILD_KEY]: { kind: 'list', scope: 'root' } },
         }, StewardFamilySection)
       } catch {
@@ -388,15 +394,25 @@ interface FamilyTabEntry {
   label: string
 }
 
-/** 家族节接管组件：纯通用渲染——把 `dsh-family.tab` 账本里的每张贡献卡按 order 渲染。 */
+/** 家族节接管组件：把 `dsh-family.tab` 账本里的每张贡献卡按 order 渲染；接管态本插件 own 卡内联直挂。 */
 function StewardFamilySection(props: {
   renderSlot: (key: string, owner?: object, opts?: { only?: string; fallback?: unknown }) => unknown
   hooks: { tabs: { getSnapshot: () => readonly FamilyTabEntry[]; subscribe: (listener: () => void) => () => void } }
+  renderOwn?: () => ReactNode
+  ownId?: string
 }): ReactElement {
   const tabs = useSyncExternalStore(props.hooks.tabs.subscribe, props.hooks.tabs.getSnapshot)
+  // 接管时本插件既是 owner 又是成员：自宣 dsh-family.tab 不触发自身 inject（账本恒无本卡），
+  // 故本卡作 OWN 行内联直挂、其余走账本；已在账本则去重。对齐 thinking-levels OWN_TAB_ID。
+  const ownId = props.ownId ?? '__own__'
+  const rows: readonly FamilyTabEntry[] = props.renderOwn
+    ? [{ id: ownId, order: Number.NEGATIVE_INFINITY, label: ownId }, ...tabs.filter(tab => tab.id !== ownId)]
+    : tabs
   return createElement('div', { style: { display: 'grid', gap: '12px' } },
-    ...tabs.map(row => createElement('div', { key: row.id },
-      props.renderSlot(FAMILY_CHILD_KEY, {}, { only: row.id, fallback: null }) as ReactElement,
+    ...rows.map(row => createElement('div', { key: row.id },
+      props.renderOwn && row.id === ownId
+        ? props.renderOwn() as ReactElement
+        : props.renderSlot(FAMILY_CHILD_KEY, {}, { only: row.id, fallback: null }) as ReactElement,
     )),
   )
 }
