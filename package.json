@@ -3,7 +3,7 @@
   "version": "2.0.7",
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
-    "tag": "beta",
+    "tag": "latest",
     "access": "public"
   },
   "description": "DSH Web 插件：会话管理台 —— 统一管理活跃与归档会话（列表/筛选/收藏/归档与取消归档/批量清理/删除），外加四门会话体检。侧栏入口优先落在顶部工具槽位（插件行之后），宿主无该槽位时回落底栏。不维护索引、不依赖 DRS；搜索能力由 dsh-search-index 提供。（原名 dsh-session-steward，2.0.0 起搜索能力拆回 dsh-search-index）",
