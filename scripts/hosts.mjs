@@ -23,6 +23,7 @@ export const supportedHosts = Object.freeze([
   '0.1.7-rc.1', '0.1.7-rc.2',
   '0.2.0-rc.1', '0.2.0-rc.2',
   '0.2.1-rc.1', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.4', '0.2.1-rc.5',
+  '0.2.2-rc.1',
 ])
 
 /** 开发/类型检查所钉的宿主版本（devDependencies 只钉它）。 */
