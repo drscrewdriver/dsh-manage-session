@@ -45,8 +45,11 @@ export const dshPeers = Object.freeze([
 
 /** 生成枚举 OR-list 范围（与 AM 同形：`0.1.0-rc.2 || 0.1.0-rc.3 || ...`）。 */
 export function peerRange() {
-  return supportedHosts.join(' || ')
+  return `>=${supportedHosts[0]} <0.3.0-0`
 }
+
+/** 已实测宿主细胞：仅供 README 展示 / 矩阵脚本，不再下发给 peer。 */
+export const hostCells = supportedHosts.join(' || ')
 
 /** devDependencies 里随宿主钉版的包 → 精确 developmentHost。 */
 export function devHostDeps() {
