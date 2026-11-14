@@ -16,6 +16,7 @@
  * 只读诊断 + 可逆处置；不改会话日志、不改历史数据、不静默丢弃字段。
  */
 import type { Context } from 'cordis'
+import { registerSessionsCommand } from './tui-command.ts'
 import z from '@deepseek-ai/schemastery'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readFileSync } from 'node:fs'
@@ -838,6 +839,15 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
     // 管理台语料：宿主 sessionQuery（惰性取，装载序不保证）。
     sessionQuery: ctx.get('sessionQuery') as SwitchSessionQuery | undefined,
   }
+
+  // ── dsh-tui 终端面：`/sessions` ────────────────────────────────
+  // TUI 不加载侧栏/管理台页面，只剩本地 `/list` → 看不到总数与最近会话。
+  // 命令层复用 listSessions(runtime) 同一份语料，只读。
+  ;(ctx as unknown as {
+    inject?: (deps: string[], cb: (scope: Context) => void) => void
+  }).inject?.(['commands'], (scope) => {
+    registerSessionsCommand(scope, { list: () => listSessions(runtime) })
+  })
 
   // ── 管家子域路由。
   ctx.effect(() => webServer.register({
