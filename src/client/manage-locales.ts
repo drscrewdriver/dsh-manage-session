@@ -172,8 +172,8 @@ export const pt: Partial<Dict> = {
   'panel.untitled': "(sem título)",
   'star.on': "Nos favoritos",
   'star.off': "Fora dos favoritos",
-  'domain.active': "活跃",
-  'domain.archived': "归档",
+  'domain.active': "Ativas",
+  'domain.archived': "Arquivadas",
 }
 
 /** All shipped dictionaries by locale id. */
