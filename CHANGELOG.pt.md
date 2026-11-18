@@ -1,4 +1,4 @@
-# Changelog / 变更日志
+# Registro de mudanças
 
 ## 2.0.0
 
@@ -9,7 +9,7 @@
 de volta para o `dsh-search-index`; este pacote já não monta índice próprio nem depende do DRS
 (`dsh-reference-session-collector`).
 
-### 破坏性变化 (mudanças destrutivas)
+### Mudanças destrutivas
 
 - Subdomínio de busca removido: as rotas `/manage-session-search/api`, o motor de índice FTS5 /
   sincronização de marca d'água / reconstrução / snapshots, a fonte de corpus DRS, os painéis e
@@ -19,20 +19,20 @@ de volta para o `dsh-search-index`; este pacote já não monta índice próprio 
 - Configurações: o namespace fica só com `manage-session`; campos retirados `search` /
   `defaultMode` / `autoSync` / `syncIntervalMs` / `archiveKeep` / `indexDir` / `corpusSource` / `drsBaseUrl`.
 - Novo método `session-catalog`: o corpus do console passa a ser montado na hora a partir do
-  `sessionQuery` do宿主 + o conjunto de arquivamento oficial (ativas/arquivadas na mesma tabela;
+  `sessionQuery` do host + o conjunto de arquivamento oficial (ativas/arquivadas na mesma tabela;
   marca de arquivada = membro do conjunto de arquivamento).
 - Os switches de `session-health-status` ganham `directDelete` (a superfície de sonda da linha de
   exclusão no menu de sessão).
 
-### 入口位次 (posição da entrada)
+### Posição da entrada
 
 - Fileira de ferramentas do topo (`sidebar.panellist` + `main`) → uma única linha de painel com
-  order 6, logo após「插件」e antes de「更多」; o clique abre a página inteira na coluna principal.
+  order 6, logo após「Complementos」e antes de「Mais」; o clique abre a página inteira na coluna principal.
   Sem esse slot → queda para o rodapé da sidebar.
 - A capacidade de assento é sondada com `inject` (sem depender de `specDynamic`, para evitar
   serviço não exposto / ordem de carga).
 
-### 配套 (acompanhamento)
+### Complementos
 
 - Dicionários: `manage-locales.ts` mantém apenas o conjunto de chaves do console (10 idiomas, com
   `star.on` / `star.off`).

@@ -1,6 +1,6 @@
-# dsh-manage-session（会话管理台 / Session Manager）
+# dsh-manage-session (Gerenciador de sessões)
 
-> **Nome anterior**: `dsh-session-steward`（会话管家）。Este repositório foi renomeado para
+> **Nome anterior**: `dsh-session-steward` (Mordomo de sessões). Este repositório foi renomeado para
 > `dsh-manage-session` a partir do 2.0.0, e a capacidade de busca/índice foi destacada de volta
 > para [`dsh-search-index`](https://github.com/drscrewdriver/dsh-search-index).
 
@@ -10,7 +10,7 @@ Plugin DSH Web: **console unificado de sessões ativas e arquivadas + revisão d
   trabalho: filtro de domínio (todos / ativas / arquivadas), filtro por título, favoritos, e três
   operações **não equivalentes** em lote após marcar caixas — arquivar, desarquivar, purgar arquivos
   do arquivo (exclusão real no disco, irreversível). Cada linha traz título, espaço de trabalho e data.
-- **Revisão de saúde（体检）** (aba reserva) — revisão em quatro portas → receita (lista de comandos)
+- **Revisão de saúde** (aba reserva) — revisão em quatro portas → receita (lista de comandos)
   → alta (disposições reversíveis + antes/depois).
 
 > Só faz **disposições reversíveis**: não reescreve logs de sessão, não altera dados históricos,
@@ -19,13 +19,13 @@ Plugin DSH Web: **console unificado de sessões ativas e arquivadas + revisão d
 > **Este pacote não contém busca/índice nem depende do DRS**: a recuperação de sessões (título /
 > conteúdo FTS5, localização de acertos) vem do `dsh-search-index`, e a dependência DRS
 > (`dsh-reference-session-collector`) mora lá. O corpus do console de gestão é montado na hora pelo
-> `session-catalog`, a partir do `sessionQuery` do宿主 + o conjunto de arquivamento oficial.
+> `session-catalog`, a partir do `sessionQuery` do host + o conjunto de arquivamento oficial.
 
 ## Posição da entrada (fileira de ferramentas do topo / queda para o rodapé)
 
 | Capacidade do host | Forma da entrada |
 |---|---|
-| A sidebar declara os slots da fileira de ferramentas do topo (linha de painel `sidebar.panellist` + slot de página inteira `main`, a fileira「插件 / 更多」do 0.1.7+/0.2.x) | A entrada pousa como **linha de painel** logo após a linha「插件」e antes do启动器「更多」(order 6), com ícone em linha e texto alinhado à esquerda por padrão; o clique abre a **página inteira** na coluna principal, e「Fechar」na página retorna à conversa |
+| A sidebar declara os slots da fileira de ferramentas do topo (linha de painel `sidebar.panellist` + slot de página inteira `main`, a fileira「Complementos / Mais」do 0.1.7+/0.2.x) | A entrada pousa como **linha de painel** logo após a linha「Complementos」e antes do lançador「Mais」(order 6), com ícone em linha e texto alinhado à esquerda por padrão; o clique abre a **página inteira** na coluna principal, e「Fechar」na página retorna à conversa |
 | O host não tem esse slot (linha antiga / layout enxuto) | Cai no `sidebar.footer.action` do **rodapé** da sidebar; o clique abre um diálogo flutuante |
 
 A decisão é feita na carga (sonda `inject` sobre os dois assentos estarem declarados); se o host
@@ -35,8 +35,8 @@ efeito imediato.
 
 ## Capturas de tela
 
-**Forma atual** — a entrada fica na fileira de ferramentas do topo da sidebar (após「插件」, antes
-de「更多」); clicar abre o console de gestão de sessões: cartões de três colunas agrupados por
+**Forma atual** — a entrada fica na fileira de ferramentas do topo da sidebar (após「Complementos」, antes
+de「Mais」); clicar abre o console de gestão de sessões: cartões de três colunas agrupados por
 espaço de trabalho, filtros de espaço de trabalho e de domínio de recuperação (todos / ativas /
 arquivadas), favoritos, e o lote arquivar · desarquivar · purgar (irreversível, pede segunda
 confirmação) após marcar caixas:
@@ -68,7 +68,7 @@ retorna um erro explícito, jamais silêncio.
 |---|---|
 | `session-catalog` | corpus do console (ativas + arquivadas na mesma tabela; montado na hora de `sessionQuery` + conjunto de arquivamento) |
 | `session-history-list` | lista o conjunto de arquivamento (arquivo de armazenamento primeiro; inclui origem, degradação, volume por linha e `pendingRestart`) |
-| `session-history-archive` | arquivamento em lote (API em memória primeiro,降级 para arquivo) |
+| `session-history-archive` | arquivamento em lote (API em memória primeiro, degrada para arquivo) |
 | `session-history-prune` | **desarquivar**: remove ids do array de arquivamento em lote (reversível, exige reiniciar) |
 | `session-history-purge` | **purgar arquivos do arquivo**: apaga de verdade diretório de transcrição + cache de projeção + os dois ids (**irreversível**) |
 | `session-history-favorites-list` / `-favorite-set` | leitura/escrita do conjunto de favoritos (domínio JSON) |
@@ -83,15 +83,15 @@ Namespace: `manage-session`.
 |---|---|---|
 | Ativar o plugin | `enabled` (padrão true) | nenhuma API é registrada e a entrada desaparece por completo |
 | Arquivos de histórico de sessão | `historyFiles` (padrão true) | não registra `session-history-*` |
-| Verificação de saúde | `healthCheck` (padrão true) | não registra `session-health-*` e não renderiza a aba「体检」 |
-| Exclusão em linha | `directDelete` (padrão false) | a linha「删除」não aparece no menu de sessão da sidebar (entrada destrutiva desligada por padrão) |
+| Verificação de saúde | `healthCheck` (padrão true) | não registra `session-health-*` e não renderiza a aba「Verificação de saúde」 |
+| Exclusão em linha | `directDelete` (padrão false) | a linha「Excluir」não aparece no menu de sessão da sidebar (entrada destrutiva desligada por padrão) |
 
 ## Armazenamento
 
 | Caminho | Conteúdo |
 |---|---|
 | `~/.dsh/storages/manage-session-favorites.json` | conjunto de favoritos (por sessionId) |
-| `~/.dsh/storages/workspace.json` | array de arquivamento e tabela de membros do espaço de trabalho (**arquivo do宿主**, este plugin faz backup automático antes de escrever) |
+| `~/.dsh/storages/workspace.json` | array de arquivamento e tabela de membros do espaço de trabalho (**arquivo do host**, este plugin faz backup automático antes de escrever) |
 
 ## Revisão em quatro portas
 
@@ -99,11 +99,11 @@ Namespace: `manage-session`.
 |---|---|---|
 | `log-integrity` | varredura multi-frame zstd → expande provenance → desempacota linhas empacotadas; seq contínuo, sem quadro rasgado no fim | problema de leitura `fail`; só quadro rasgado no fim `warn` |
 | `projection-cache` | defasagem (`lag`) entre o `minSeq` de `~/.dsh/storages/session_projcache/sessions/<id>.json` e o último seq do log + campos não liquidados | defasado e não liquidado `fail`; qualquer um `warn` |
-| `lossless-json` | JSON sem perdas linha a linha via `sessionProjections.checkpoint(session)` no estado quente | acerto `fail`, com key da projeção → pacote de归属 |
+| `lossless-json` | JSON sem perdas linha a linha via `sessionProjections.checkpoint(session)` no estado quente | acerto `fail`, com key da projeção → pacote de atribuição |
 | `cold-read` | motivo do último `turn/end`, existe open step sem fecho | open step `fail`; interrupted/sem turn/end `warn` |
 
 A **receita** só propõe três coisas reversíveis: ① isolar registros corrompidos do cache de projeção
-(backup antes) ② havendo step não liquidado, aguardar o宿主 liquidar ③ emitir a lista de comandos
+(backup antes) ② havendo step não liquidado, aguardar o host liquidar ③ emitir a lista de comandos
 executáveis. **Proibido**: reescrever logs de sessão, alterar dados históricos, descartar campos em
 silêncio.
 
@@ -112,7 +112,7 @@ silêncio.
 ```bash
 pnpm install
 pnpm typecheck     # tsc -b --pretty false
-pnpm test          # vitest run（metade do宿主）
+pnpm test          # vitest run (metade do host)
 pnpm test:client   # asserções de registro / dicionários da metade de navegador (exige build antes)
 pnpm build         # tsc -b && tsdown → lib/index.js + lib/client.js
 ```
@@ -121,14 +121,14 @@ pnpm build         # tsc -b && tsdown → lib/index.js + lib/client.js
 
 MIT
 
-## TUI 终端面（dsh-tui）
+## Face TUI (dsh-tui)
 
-dsh-tui 不加载插件的 client 半边（面板/卡片/设置页），也调不到插件自有 RPC；工具调用只显示一行摘要。人可读、人可操作的面只剩宿主斜杠命令。输出约定：单行 ≤100 字符、总行 ≤40、无 ANSI、两空格对齐；写操作默认 dry、加 `--yes` 才执行；`--json` 输出单行 JSON。
+O dsh-tui não carrega a metade client do plugin (painéis/cartões/página de configuração) nem alcança RPC própria do plugin; chamada de ferramenta mostra só uma linha de resumo. A face legível e operável por humano que sobra são os comandos de barra do host. Convenção de saída: linha única ≤100 caracteres, ≤40 linhas no total, sem ANSI, alinhamento de dois espaços; escrita é dry-run por padrão, `--yes` executa; `--json` devolve JSON em linha única.
 
-| 命令 | 作用 |
+| Comando | Função |
 |---|---|
-| `/sessions audit` | 会话总数 + 最近 10 个（`--all` 取 40） |
-| `/sessions archived` | 只看已归档会话 |
-| `/sessions prune` | dry run：预估可清理的归档数（不删） |
+| `/sessions audit` | total de sessões + as 10 mais recentes (`--all` traz 40) |
+| `/sessions archived` | só sessões arquivadas |
+| `/sessions prune` | dry run: estima quantos arquivamentos podem ser limpos (não apaga) |
 
-命令由插件自己在宿主侧注册（`ctx.inject(['commands'], …)`）：命令服务缺席的老宿主线上不激活、不报错。
+O comando é registrado pelo próprio plugin no host (`ctx.inject(['commands'], …)`): em linhas antigas sem serviço de comandos ele não ativa e não gera erro.

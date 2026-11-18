@@ -72,7 +72,7 @@ minimumReleaseAgeExclude:
 ## 2. Reinicie o host
 
 **Um reinício do DSH é obrigatório após instalar ou atualizar.** Recarregar a página do navegador
-não basta: a metade do宿主 registra as rotas `/manage-session/api` e o namespace de configurações
+não basta: a metade do host registra as rotas `/manage-session/api` e o namespace de configurações
 na partida, e o host precisa recarregar a fonte de arquivamento antes de refletir um prune.
 
 ## 3. Atualização
