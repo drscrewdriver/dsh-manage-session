@@ -2,6 +2,8 @@
 
 ## 2.0.0
 
+- i18n: add Portuguese (pt-BR) locale — runtime dictionary, package metadata and README/INSTALL/CHANGELOG mirrors.
+
 **重定位：纯会话管理台。** 搜索/索引子域整体拆回 `dsh-search-index`，本包不再自建索引、
 不再依赖 DRS（`dsh-reference-session-collector`）。
 

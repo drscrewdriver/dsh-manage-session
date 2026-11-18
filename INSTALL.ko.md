@@ -6,13 +6,16 @@
 - [中文安装指南](./INSTALL.zh.md)
 - [日本語インストールガイド](./INSTALL.ja.md)
 - [한국어 설치 안내](./INSTALL.ko.md)
+- [포르투갈어 설치 안내](./INSTALL.pt.md)
 - [中文 README](./README.md)
 - [영어 README](./README.en.md)
 - [日本語 README](./README.ja.md)
 - [한국어 README](./README.ko.md)
+- [포르투갈어 README](./README.pt.md)
 - [변경 이력](./CHANGELOG.md)
 - [日本語 changelog](./CHANGELOG.ja.md)
 - [한국어 changelog](./CHANGELOG.ko.md)
+- [포르투갈어 changelog](./CHANGELOG.pt.md)
 
 이 가이드의 자리표시자는 다음과 같습니다.
 

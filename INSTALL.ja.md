@@ -6,13 +6,16 @@
 - [中国語インストールガイド](./INSTALL.zh.md)
 - [日本語インストールガイド](./INSTALL.ja.md)
 - [韓国語インストールガイド](./INSTALL.ko.md)
+- [ポルトガル語インストールガイド](./INSTALL.pt.md)
 - [中国語 README](./README.md)
 - [英語 README](./README.en.md)
 - [日本語 README](./README.ja.md)
 - [韓国語 README](./README.ko.md)
+- [ポルトガル語 README](./README.pt.md)
 - [変更履歴](./CHANGELOG.md)
 - [日本語の変更履歴](./CHANGELOG.ja.md)
 - [韓国語の変更履歴](./CHANGELOG.ko.md)
+- [ポルトガル語の変更履歴](./CHANGELOG.pt.md)
 
 本ガイドで使用するプレースホルダは次のとおりです：
 

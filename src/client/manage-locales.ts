@@ -1,6 +1,6 @@
 /**
  * 会话管理（dsh-manage-session）client dictionaries —— 只含管理台用到的键集
- * （zh / en / ja / ko / fr / de / it / ru / es）。
+ * （zh / en / ja / ko / fr / de / it / ru / es / pt）。
  *
  * 从合并包的搜索字典里**裁出管理台专属键**（keys 不变、文案不变），搜索子域
  * 已拆回 dsh-search-index，本包不再持有搜索面板的文案。
@@ -165,8 +165,19 @@ export const es: Partial<Dict> = {
   'domain.archived': "归档",
 }
 
+export const pt: Partial<Dict> = {
+  'panel.loadingSessions': "Carregando sessões…",
+  'panel.noMatch': "Nenhuma sessão correspondente.",
+  'panel.noSessions': "Sem sessões",
+  'panel.untitled': "(sem título)",
+  'star.on': "Nos favoritos",
+  'star.off': "Fora dos favoritos",
+  'domain.active': "活跃",
+  'domain.archived': "归档",
+}
+
 /** All shipped dictionaries by locale id. */
-export const dictionaries: Record<string, Record<string, string>> = { zh, en, ja, ko, fr, de, it, ru, es }
+export const dictionaries: Record<string, Record<string, string>> = { zh, en, ja, ko, fr, de, it, ru, es, pt }
 
 /** Translate with {param} interpolation; falls back to zh, then the key itself. */
 export function translate(locale: ((key: LocaleKey, params?: Record<string, unknown>) => string) | undefined, key: LocaleKey, params?: Record<string, unknown>): string {

@@ -1,5 +1,5 @@
 /**
- * 会话管理的多语言文案（zh 为键集基准，另含 en 与 ja/ko/fr/de/it/ru/es）。
+ * 会话管理的多语言文案（zh 为键集基准，另含 en 与 ja/ko/fr/de/it/ru/es/pt）。
  *
  * 硬约束：本文件**不得出现「搜索」二字** —— 搜索/索引属 dsh-manage-session-search 那一片。
  * 文案走 `translate(t, key, params)`，字典由官方 locale 服务注册（缺失时回退内置 zh）。
@@ -856,9 +856,101 @@ export const es: Partial<Record<LocaleKey, string>> = {
   'health.ago.days': 'hace {n} d',
 }
 
+export const pt: Partial<Record<LocaleKey, string>> = {
+  "card.title": "Gerenciador de sessões",
+  "card.desc": "Arquivos de histórico · Verificação de saúde",
+  "card.enabled": "Ativar o gerenciador de sessões",
+  "card.enabled.desc": "Ao desativar, nenhuma API é registrada e a entrada da barra lateral desaparece por completo.",
+  "card.history": "Arquivos de histórico de sessão",
+  "card.history.desc": "Visualização e limpeza do arquivo (Residência). Ao desativar, nenhuma rota de histórico é registrada e essa aba não aparece.",
+  "card.health": "Verificação de saúde",
+  "card.health.desc": "Revisão → Receita → Alta. Ao desativar, nenhuma rota de revisão é registrada e essa aba não aparece.",
+  "card.directDelete": "Entrada de exclusão direta",
+  "card.directDelete.desc": "Ativado, as linhas de resultados do painel de busca mostram um botão Excluir (confirmação em dois passos, mesma rota da gestão). Desativado por padrão.",
+  "menu.deleteSession": "Excluir sessão",
+  "menu.deleteSession.confirm": "Confirmar exclusão",
+  "card.readonly": "Esta sessão não pode alterar a configuração (montagem somente leitura).",
+  "card.unavailable": "Serviço de configuração indisponível; não dá para ler a configuração.",
+  "family.title": "Configurações do plugin Screwdriver",
+  "panel.title": "Gerenciador de sessões",
+  "panel.tab.history": "Residência",
+  "panel.tab.health": "Revisão",
+  "panel.close": "Fechar",
+  "panel.untitled": "(sem título)",
+  "history.loading": "Lendo a lista de arquivos…",
+  "history.empty": "O conjunto de arquivos está vazio.",
+  "history.edit": "Editar",
+  "history.done": "Concluído",
+  "history.selectAll": "Selecionar tudo",
+  "history.unselectAll": "Desmarcar tudo",
+  "history.unarchive": "Remover o estado de arquivo ({n})",
+  "history.unarchiving": "Removendo do arquivo…",
+  "history.purge": "Purgar arquivos do arquivo ({n}) · liberar {size}",
+  "history.purging": "Purgando…",
+  "history.editingHint": "Modo de edição: marque sessões e escolha uma de duas — «Remover o estado de arquivo» só as retira da matriz oficial de arquivos (reversível; voltam à barra lateral após reiniciar); «Purgar arquivos do arquivo» apaga de verdade a transcrição e o cache de projeção do disco (irreversível).",
+  "history.restartHint": "{removed} ids retirados da matriz de arquivos (restam {remaining}). **Reinicie o DSH agora**: enquanto o host estiver aberto, qualquer mudança em arquivos ou espaço de trabalho regrava a instantânea inteira da memória no arquivo e desfaz esta operação.",
+  "history.pendingRestart": "Ainda há {n} arquivados vigentes na memória do host: a lista segue o arquivo de armazenamento (eles não estão mais lá), mas as sessões ficam ocultas da barra lateral até reiniciar o DSH.",
+  "history.count": "{n} no total · {size} ocupados",
+  "history.size": "transcrição {t} · cache {c}",
+  "history.sizeUnknown": "sem entidade no disco",
+  "history.source.registry": "Origem: registro de arquivos do host",
+  "history.source.storage-file": "Origem: arquivo de armazenamento",
+  "history.source.none": "O conjunto de arquivos não pode ser lido de nenhuma das duas origens",
+  "history.confirmUnarchive": "Remover o estado de arquivo destas {n} sessões?\n\n{summary}\n\nSó a matriz de arquivos é editada (cópia de segurança automática); nada no disco é tocado. Após reiniciar o DSH, estas sessões voltam aos seus espaços de trabalho.",
+  "history.confirmPurge": "Purgar os arquivos em disco destas {n} sessões arquivadas?\n\n{summary}\n\nSerão liberadas cerca de {size} no total.\nSerão apagados: o diretório de transcrições (incluídas as cópias de formato antigo) e o cache de projeção por item, e eles serão retirados da matriz de arquivos e das tabelas de membros do espaço de trabalho.\n\n**Esta operação é irreversível; as sessões não poderão ser recuperadas.**",
+  "history.purgeResult": "Purgadas {purged} sessões arquivadas, liberados {size}. Reinicie o DSH para que desapareçam por completo.",
+  "history.purgePartial": "Purgadas {purged}, liberados {size}; {failed} falharam (veja os detalhes abaixo).",
+  "history.purgeFailures": "Detalhes das falhas",
+  "health.scan": "Iniciar revisão",
+  "health.scanning": "Revisando…",
+  "health.progress": "{done}/{total} · {sec}s decorridos",
+  "health.empty": "Nenhuma sessão problemática encontrada.",
+  "health.clean": "Todas as verificações passaram.",
+  "health.level.ok": "correto",
+  "health.level.warn": "atenção",
+  "health.level.skipped": "Não verificado",
+  "health.level.fail": "anomalia",
+  "health.priority.high": "Prioridade",
+  "health.gate.generation": "Artefato de geração",
+  "health.gate.log-integrity": "Integridade do registro",
+  "health.gate.projection-cache": "Cache de projeção",
+  "health.gate.lossless-json": "JSON sem perdas",
+  "health.gate.cold-read": "Continuidade",
+  "health.gate.source-kind": "Assinatura do plugin",
+  "health.attribution": "Titular",
+  "health.field": "Campo",
+  "health.unknownOwner": "titular desconhecido",
+  "health.phase.checkup": "1) Revisão",
+  "health.phase.prescribe": "2) Receita",
+  "health.phase.discharge": "3) Alta",
+  "health.repair": "Aplicar reparo reversível",
+  "health.repairing": "Reparando…",
+  "health.sourceMigrate": "Converter assinaturas legadas",
+  "health.sourceMigrating": "Convertendo…",
+  "health.sourceMigrated": "Convertidas {n} linhas de assinaturas legadas (cópia de segurança: {backup})",
+  "health.sourceMigrateNone": "Não há linhas de assinaturas legadas para converter",
+  "health.sourceMigrateFail": "Falha na conversão: {error}",
+  "health.before": "Antes",
+  "health.after": "Depois",
+  "health.quarantined": "Registro do cache de projeção posto em quarentena (recolhe após reiniciar o DSH)",
+  "health.commands": "Comandos executáveis",
+  "health.copy": "Copiar",
+  "health.copied": "Copiado",
+  "health.detail": "Ver detalhes",
+  "health.back": "Voltar à lista",
+  "health.cache.hint": "Resultado do cache · {ago}",
+  "health.cache.refresh": "Atualizar",
+  "health.cache.corpusChanged": "O corpus mudou ({was} → {now}); recomenda-se atualizar",
+  "health.ago.justNow": "agora mesmo",
+  "health.ago.minutes": "há {n} min",
+  "health.ago.hours": "há {n} h",
+  "health.ago.days": "há {n} d",
+}
+
+
 /**
  * Todas las locales / 全部语言，按 locale 服务消费的形态组合。
- * 单次注册即可激活全部 9 种语言（zh/en 为宿主内置，其余走同一 map 重载）。
+ * 单次注册即可激活全部 10 种语言（zh/en 为宿主内置，其余走同一 map 重载）。
  */
 export const dictionaries: Record<string, Record<string, string>> = {
   zh,
@@ -870,6 +962,7 @@ export const dictionaries: Record<string, Record<string, string>> = {
   it,
   ru,
   es,
+  pt,
 }
 
 /** 字典查找（缺 key 时回退到内置 zh，再回退 key 本身）。 */
