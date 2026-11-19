@@ -5,7 +5,7 @@
  * - 默认：**校验** package.json / dsh.plugin.json / README 与 hosts.mjs 一致，
  *   有漂移则列出差异并以退出码 1 失败（CI 用）。
  * - `--write`：把 supportedHosts 枚举回写四处 ——
- *   1. package.json peerDependencies（dshPeers 五包 = 枚举 OR-list）
+ *   1. package.json peerDependencies（dshPeers 五包 = 逐 rc 枚举 OR-list）
  *   2. package.json engines.dsh（同一 OR-list；loader 预检门与安装门必须同源）
  *   3. package.json devDependencies（devHostDeps 钉 developmentHost 精确版）
  *   4. dsh.plugin.json engines.dsh + README.md / README.en.md 兼容句
@@ -16,12 +16,13 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { dshPeers, devHostDeps, developmentHost, peerRange, supportedHosts } from './hosts.mjs'
+import { dshPeers, devHostDeps, developmentHost, enginesRange, peerRange, supportedHosts } from './hosts.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
 const WRITE = process.argv.includes('--write')
-const RANGE = peerRange()
+const PEERS = peerRange()
+const RANGE = enginesRange()
 
 const BEGIN = '<!-- hosts-sync:begin -->'
 const END = '<!-- hosts-sync:end -->'
@@ -78,7 +79,7 @@ function upsertCompat(path, block, label) {
 
 // 1+2+3. package.json：peers / engines / devDeps
 editJson(join(ROOT, 'package.json'), (pkg) => {
-  for (const name of dshPeers) pkg.peerDependencies[name] = RANGE
+  for (const name of dshPeers) pkg.peerDependencies[name] = PEERS
   pkg.engines ??= {}
   pkg.engines.dsh = RANGE
   for (const [name, version] of Object.entries(devHostDeps())) {

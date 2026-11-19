@@ -24,6 +24,12 @@ export const supportedHosts = Object.freeze([
   '0.2.0-rc.1', '0.2.0-rc.2',
   '0.2.1-rc.1', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.4', '0.2.1-rc.5',
   '0.2.2-rc.1',
+  // 2026-11-19 补票 rc.2..rc.5：四格 14 列探针与 rc.1 同形（gate blob
+  // 2e4ca5736a77 自 alpha.2 未变、capability-seams 810ff60c1509、
+  // persistence-catalog 33d9aa439563、slot-catalog 617b47fe2f29、
+  // SESSION_FORMAT_VERSION=4）；rc.3→rc.4 的 packages/client 纯版本号 bump，
+  // rc.5 只动 ui-settings-web-search 搜索页文案与 AUTO 项。
+  '0.2.2-rc.2', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5',
 ])
 
 /** 开发/类型检查所钉的宿主版本（devDependencies 只钉它）。 */
@@ -43,8 +49,22 @@ export const dshPeers = Object.freeze([
   '@deepseek-ai/dsh-session',
 ])
 
-/** 生成枚举 OR-list 范围（与 AM 同形：`0.1.0-rc.2 || 0.1.0-rc.3 || ...`）。 */
+/**
+ * peerDependencies 用的**逐 rc 枚举串**（`0.1.0-rc.2 || 0.1.0-rc.3 || ...`）。
+ * 2026-11-16 修正：这里曾返回有界区间，但 node-semver 只让预发布版命中「同元组
+ * 边界」的区间，中间的每个 rc 都被排除 → pnpm/npm 解析不到 peer，装不上
+ * （ERR_PNPM_OUTDATED_LOCKFILE / ETARGET / EUSAGE）。枚举才是 resolver 的形状。
+ */
 export function peerRange() {
+  return supportedHosts.join(' || ')
+}
+
+/**
+ * engines.dsh 用的**有界区间**：下限＝枚举起点（不硬编码，防「下限写贵了静默
+ * 丢老线」），上限 `<0.3.0-0`（`-0` 关键：裸 `<0.3.0` 在 includePrerelease 下
+ * 仍放行 0.3.0-rc.*）。宿主侧判定带 includePrerelease，区间口径安全。
+ */
+export function enginesRange() {
   return `>=${supportedHosts[0]} <0.3.0-0`
 }
 
