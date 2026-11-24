@@ -402,3 +402,94 @@ export function openSessionThrough(get: (name: string) => unknown, sessionId: st
   const sessions = get('sessions') as SwitchSessionsService | undefined
   if (sessions !== undefined && typeof sessions.open === 'function') sessions.open(sessionId)
 }
+
+/** 一次「从管理台跳到会话」的结果（失败以 `error` 回报，不抛）。 */
+export interface OpenSessionOutcome {
+  ok: boolean
+  error?: string
+  /** `true` = 已退页，导航排到下一帧执行（结果通过 `onDeferredError` 回报）。 */
+  deferred?: boolean
+}
+
+/** `openSessionSafely` 选项。 */
+export interface OpenSessionOptions {
+  /** 退出面板页（`layout.selectPanel(null)`），在导航前执行。 */
+  exitPanel?: () => void
+  /** 导航失败时把面板页重新选中（免得「跳不过去还把面板也关了」）。 */
+  restorePanel?: () => void
+  /**
+   * 把真正的导航排到下一帧（**整页形态必须**）。
+   *
+   * 宿主 `openSession` 内部最后才 `selectPanel(null)`；我们主动退页与宿主切主栏在同一帧
+   * 会互相覆盖，表现为「第一次点击只关页、要再点一次才跳」（实测双击症状）。退页后让
+   * 渲染先收敛一帧再导航，一次点击就等价于旧行为里的第二次点击。
+   */
+  defer?: boolean
+  /** 延迟导航抛错时的回调（同步阶段已确认能力可用，这里只可能是宿主自己炸）。 */
+  onDeferredError?: (message: string) => void
+}
+
+/** 下一帧（无 rAF 环境回退 setTimeout 0）。 */
+function nextFrame(run: () => void): void {
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { run() })
+  else setTimeout(run, 0)
+}
+
+/**
+ * 从管理台打开会话（面板页 / 对话框共用）。
+ *
+ * 三件事让它只需**一次点击**，且不会把面板“坑”掉：
+ *
+ * 1. **先退面板页再导航**（可选再延到下一帧，见 `defer`）：避免“第一次点击只关页”；
+ * 2. **先判能力再动手**：导航服务缺席时提前失败，不会出现“面板已关、会话没打开”；
+ * 3. **全程 try/catch**：失败回一条错误（或触发 `restorePanel` + `onDeferredError`），
+ *    绝不把整个管理台报错白屏或异常弹出去。
+ * @param get - 宿主服务取值器（`ctx.get`）。
+ * @param sessionId - 目标会话 id。
+ * @param options - 退页/恢复/延迟选项。
+ * @returns `ok`、失败原因与是否已延迟。
+ */
+export function openSessionSafely(
+  get: (name: string) => unknown,
+  sessionId: string,
+  options: OpenSessionOptions = {},
+): OpenSessionOutcome {
+  const id = typeof sessionId === 'string' ? sessionId.trim() : ''
+  if (id === '') return { ok: false, error: '缺少合法的会话 id' }
+  // 先判能力再动手：没有导航服务时提前失败，避免先把面板页撤了却跳不过去。
+  let canNavigate = false
+  try {
+    const uiWorkspace = get('uiWorkspace') as SwitchUiWorkspaceService | undefined
+    const sessions = get('sessions') as SwitchSessionsService | undefined
+    canNavigate = (uiWorkspace !== undefined && typeof uiWorkspace.openSession === 'function')
+      || (sessions !== undefined && typeof sessions.open === 'function')
+  } catch {
+    canNavigate = false
+  }
+  if (!canNavigate) return { ok: false, error: '宿主导航服务不可用（uiWorkspace / sessions 均缺席）' }
+
+  const navigate = (): OpenSessionOutcome => {
+    try {
+      openSessionThrough(get, id)
+      return { ok: true }
+    } catch (err) {
+      const message = String(err instanceof Error ? err.message : err)
+      try {
+        options.restorePanel?.()
+      } catch { /* 恢复失败也只能如实报错 */ }
+      return { ok: false, error: message }
+    }
+  }
+
+  try {
+    options.exitPanel?.()
+  } catch {
+    // 退页失败不阻断导航：最坏是面板页与目标会话争主栏，宿主自己会收敛。
+  }
+  if (options.defer !== true) return navigate()
+  nextFrame(() => {
+    const outcome = navigate()
+    if (outcome.ok === false) options.onDeferredError?.(outcome.error ?? '')
+  })
+  return { ok: true, deferred: true }
+}

@@ -1,5 +1,13 @@
 # Registro de mudanças
 
+## 2.0.14
+
+**Três ajustes de interação no console (feedback do usuário).**
+
+- **A barra de ações em lote não fica mais coberta pelos controles flutuantes**: deixou de ser uma faixa colada ao fundo com os botões empurrados para a direita; virou um cartão flutuante à esquerda (`batchInfo` com `flex:0 1 auto`), botões logo após «N selecionados», 10 px acima e com borda/sombra — separado do dock de visualização no canto inferior direito.
+- **Duplo clique para abrir, clique simples apenas seleciona (evita toque acidental)**: clicar na linha já não abre a sessão — o clique simples apenas destaca o cartão; abrir exige duplo clique (ou Enter / espaço pelo teclado). Ao abrir de verdade, primeiro sai da página-painel (`layout.selectPanel(null)`) e só no quadro seguinte entrega ao `uiWorkspace.openSession`, evitando a ordem do host ("troca de sessão primeiro, desmarca o painel no final") que fazia o primeiro clique não surtir efeito.
+- **Navegação tolerante a falhas (não salta mais para fora)**: serviço de navegação ausente, sessão apagada ou exceção do serviço viram uma faixa de erro no próprio painel (`manage.open.failed`: não foi possível abrir a sessão "{id}": motivo), dispensável; painel, seleções e posição de rolagem permanecem intactos.
+
 ## 2.0.13
 
 **Primeira renderização instantânea + títulos completados por streaming de frames.**

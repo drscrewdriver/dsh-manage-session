@@ -10,7 +10,7 @@
  * 侧栏完全生效——宿主半在成功路径上已同步联动索引）。
  */
 import { createElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem } from './host-api.ts'
+import { callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem, type OpenSessionOutcome } from './host-api.ts'
 import { translate, type LocaleKey } from './manage-locales.ts'
 
 /** 管理台字典面（search 子域命名空间的键集）。 */
@@ -35,8 +35,10 @@ function injectManageStyles(): () => void {
 @media (max-width:1180px){.dmss_grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.dmss_grid{grid-template-columns:minmax(0,1fr)}}
 /* 卡片本体：标题行 + 工作区元信息两行，整块可点（打开会话）。 */
-.dmss_row{box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0;height:auto;margin:0;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.05));color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer;transition:border-color .14s ease-out,background-color .14s ease-out}
+.dmss_row{box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0;height:auto;margin:0;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.05));color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer;user-select:none;transition:border-color .14s ease-out,background-color .14s ease-out}
 .dmss_row:hover{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-interactive-bg-hover)}
+/* 单击选中态：告诉用户「点到了但没跳转」，双击才会打开会话。 */
+.dmss_rowActive{border-color:var(--dsw-alias-state-business-primary);box-shadow:inset 0 0 0 1px var(--dsw-alias-state-business-primary)}
 .dmss_rowTitle{display:flex;align-items:center;gap:6px;min-width:0;width:100%}
 .dmss_titleText{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px;font-weight:500}
 .dmss_tag{flex:none;color:var(--dsw-alias-label-caption);font-size:11px;line-height:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -44,8 +46,11 @@ function injectManageStyles(): () => void {
 .dmss_check{flex:none;display:inline-flex;align-items:center}
 .dmss_check input{width:13px;height:13px;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}
 .dmss_tagArch{flex:none;color:var(--dsw-alias-state-warn-label,var(--dsw-alias-label-caption));font-size:10px;line-height:16px;border:1px solid currentColor;border-radius:999px;padding:0 6px;white-space:nowrap}
-.dmss_batchBar{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-top:1px solid var(--dsw-alias-border-l1)}
-.dmss_batchInfo{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
+.dmss_batchBar{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 8px 10px;padding:9px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.06));box-shadow:0 6px 16px rgba(0,0,0,.10);position:relative;z-index:3}
+.dmss_batchInfo{flex:0 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;white-space:nowrap}
+.dmss_openError{display:flex;align-items:center;gap:8px;margin:6px 8px 0;padding:7px 10px;border:1px solid var(--dsw-alias-state-error-primary);border-radius:10px;color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}
+.dmss_openErrorText{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dmss_openErrorClose{flex:none;border:none;background:transparent;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0 2px}
 .dmss_actBtn{height:26px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:8px;padding:0 10px;font-size:12px;line-height:24px;white-space:nowrap}
 .dmss_actBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dmss_actBtn:disabled{cursor:not-allowed;opacity:.5}
@@ -69,13 +74,27 @@ function injectManageStyles(): () => void {
   }
 }
 
+/** 最近一次跳转失败的原因（跨重挂保留：退页失败后恢复面板页时还能看到）。 */
+let lastOpenError: string | null = null
+
 /** 批量管理台主体（自持语料/勾选/批量状态）。 */
-export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (sessionId: string) => void }): ReactElement {
+export function ManageConsole({ t, open, deferOpen = false }: {
+  t?: ManageTranslate
+  /** 打开会话：返回结果（失败由本组件就地提示，绝不抛错/白屏）。 */
+  open: (sessionId: string, options?: { defer?: boolean; onError?: (message: string) => void }) => OpenSessionOutcome
+  /** 整页形态：先退页、下一帧再导航（否则第一次点击只关页）。 */
+  deferOpen?: boolean
+}): ReactElement {
   const [sessions, setSessions] = useState<HostSessionItem[] | null>(null)
   const [sessionsError, setSessionsError] = useState<string | null>(null)
+  // 跳转失败的就地提示（会话已删/宿主导航服务缺席/服务抛错）——面板保持不变，不异常跳出。
+  // 模块级余留：整页形态下“退页 + 恢复页”会重挂本组件，局部 state 会丢，失败原因靠它带回来。
+  const [openError, setOpenError] = useState<string | null>(lastOpenError)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [batch, setBatch] = useState<{ busy: boolean; message: string; ok: boolean }>({ busy: false, message: '', ok: true })
   const [confirmPurge, setConfirmPurge] = useState(false)
+  // 单击只选中（高亮），**不跳转**：避免误点一下就被抛出管理台。
+  const [activeId, setActiveId] = useState<string | null>(null)
   // 检索域过滤（全部/活跃/归档）——与搜索面板同一组 chip 语义。
   const [domain, setDomain] = useState<'all' | 'active' | 'archived'>('all')
   // 收藏（R6）:host 侧 JSON 域,挂载取一次,星标切换就地更新。
@@ -288,6 +307,37 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
     })
   }
 
+  /**
+   * 打开会话的唯一入口（双击 / 键盘 Enter）。
+   *
+   * 单击**不**调这里：用户定标「双击才允许跳转」，单击只做选中——
+   * 鼠标滑一下就把人抛出管理台正是上一轮的痛点。
+   */
+  const navigate = (item: HostSessionItem): void => {
+    const label = item.title !== '' ? item.title : item.sessionId
+    const fail = (reason: string): void => {
+      const text = reason === ''
+        ? translate(t, 'manage.open.failed', { id: label })
+        : `${translate(t, 'manage.open.failed', { id: label })}：${reason}`
+      lastOpenError = text
+      setOpenError(text)
+    }
+    try {
+      const outcome = open(item.sessionId, {
+        defer: deferOpen,
+        onError: reason => { fail(reason) },
+      })
+      if (outcome.ok === true) {
+        lastOpenError = null
+        setOpenError(null)
+        return
+      }
+      fail(outcome.error ?? '')
+    } catch (err) {
+      fail(String(err instanceof Error ? err.message : err))
+    }
+  }
+
   const toggleGroup = (items: readonly HostSessionItem[]): void => {
     setSelected(prev => {
       const next = new Set(prev)
@@ -378,7 +428,19 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
     createElement('div', { key: 'hint', className: 'dmss_manageHint' }, [
       translate(t, 'manage.hint'),
       createElement('span', { key: 'sep', style: { display: 'block', marginTop: '2px' } }, translate(t, 'manage.restartHint')),
+      createElement('span', { key: 'openHint', style: { display: 'block', marginTop: '2px' } }, translate(t, 'manage.hint.open')),
     ]),
+    // 跳转失败的容错带：面板与勾选/滚动位置全部保留，只多这一行提示。
+    ...(openError === null ? [] : [createElement('div', { key: 'openError', className: 'dmss_openError', role: 'alert' }, [
+      createElement('span', { key: 'text', className: 'dmss_openErrorText', title: openError }, openError),
+      createElement('button', {
+        key: 'close',
+        type: 'button',
+        className: 'dmss_openErrorClose',
+        title: translate(t, 'manage.open.dismiss'),
+        onClick: () => { lastOpenError = null; setOpenError(null) },
+      }, '×'),
+    ])]),
     createElement('div', { key: 'groups', className: 'dmss_manageList' },
       ...manageGroups.map(group => createElement('div', { key: group.cwd === '' ? '(nocwd)' : group.cwd, className: 'dmss_group' }, [
         createElement('div', {
@@ -406,10 +468,13 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
           key: item.sessionId,
           role: 'button',
           tabIndex: 0,
-          className: 'dmss_row',
-          title: rowTitle(item),
-          onClick: () => { open(item.sessionId) },
-          onKeyDown: (e: { key: string }) => { if (e.key === 'Enter' || e.key === ' ') open(item.sessionId) },
+          className: `dmss_row${activeId === item.sessionId ? ' dmss_rowActive' : ''}`,
+          title: translate(t, 'manage.row.openHint', { title: rowTitle(item) }),
+          // 单击：只选中高亮（不跳转）——双击才打开，避免误触被抛出管理台。
+          onClick: () => { setActiveId(item.sessionId) },
+          onDoubleClick: () => { navigate(item) },
+          // 键盘是明确意图：Enter / 空格 直接打开。
+          onKeyDown: (e: { key: string }) => { if (e.key === 'Enter' || e.key === ' ') navigate(item) },
         }, [
           createElement('span', { key: 'line', className: 'dmss_rowTitle' }, [
             createElement('span', { key: 'check', className: 'dmss_check' },
@@ -418,6 +483,8 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
                 checked: selected.has(item.sessionId),
                 onChange: () => { toggleOne(item.sessionId) },
                 onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
+                // 双击星标/勾选框不得连带打开会话（dblclick 会绕过 click 的 stopPropagation）。
+                onDoubleClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
               })),
             createElement('button', {
               key: 'star',
@@ -426,6 +493,7 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
               title: translate(t, favorites.has(item.sessionId) ? 'star.on' : 'star.off'),
               style: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '13px', lineHeight: 1, padding: '0 2px', color: favorites.has(item.sessionId) ? 'var(--dsw-alias-state-warn-label, #d97706)' : 'var(--dsw-alias-label-caption)' },
               onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation(); toggleFavorite(item.sessionId) },
+              onDoubleClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
             }, favorites.has(item.sessionId) ? '★' : '☆'),
             createElement('span', { key: 'x', className: 'dmss_titleText' }, rowTitle(item)),
             item.archived === true && createElement('span', { key: 'arch', className: 'dmss_tagArch' }, translate(t, 'tag.archived')),

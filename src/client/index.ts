@@ -24,7 +24,7 @@ import { StewardCardScope, StewardSettingsCard, type CardTranslate } from './car
 import { stewardBridgeScope, withBridgeFallback, type BridgeScope } from './bridge-scope.ts'
 import { dictionaries, translate, type LocaleKey } from './locales.ts'
 import { StewardFooter, StewardPanel, TAB_HEALTH } from './panel.tsx'
-import { openSessionThrough } from './host-api.ts'
+import { openSessionSafely, type OpenSessionOutcome } from './host-api.ts'
 import {
   SESSION_MENU_DELETE_ID, SESSION_MENU_DELETE_ORDER, SESSION_MENU_SEAT, StewardDeleteMenuItem,
 } from './session-menu.tsx'
@@ -206,14 +206,9 @@ export function apply(ctx: Context): void {
   const slots = ctx.get('slots') as StewardSlotsService | undefined
   if (slots === undefined) return
 
-  // 管理台行点击打开会话：click 时经 openSessionThrough 解析（uiWorkspace.openSession
-  // 0.1.7+ 优先，旧宿主回退 sessions.open）—— 应用序早于导航模块，必须惰性取。
-  const openSession = (sessionId: string): void => {
-    openSessionThrough((name) => ctx.get(name), sessionId)
-  }
-
-  // 顶栏页的关闭动作：回退到会话（layout 服务惰性取——装载序不保证）。
-  const closeToolPanel = (): void => {
+  // 顶栏页的退出动作：回退到会话（layout 服务惰性取——装载序不保证）。
+  // 行点击导航前也要用它：先撤面板页，再让宿主切主栏（否则第一次点击只能撤页）。
+  const exitPanelPage = (): void => {
     try {
       const layout = ctx.get('layout') as { selectPanel?: (id: string | null) => void } | undefined
       layout?.selectPanel?.(null)
@@ -221,6 +216,27 @@ export function apply(ctx: Context): void {
       /* 布局服务缺席：页面保留，用户可点「会话」行返回 */
     }
   }
+  const closeToolPanel = exitPanelPage
+
+  /** 重新选中面板页（跳转失败时的容错：面板不消失）。 */
+  const enterPanelPage = (): void => {
+    try {
+      const layout = ctx.get('layout') as { selectPanel?: (id: string | null) => void } | undefined
+      layout?.selectPanel?.(MANAGER_PANEL_ID)
+    } catch { /* 布局服务缺席：保持现状 */ }
+  }
+
+  // 管理台行点击打开会话：**先退页 → 下一帧导航**，全程不抛错（失败回原因，面板就地提示）。
+  // 导航服务惰性取：应用序早于导航模块。
+  const openSession: OpenSessionFn = (
+    sessionId: string,
+    options?: { defer?: boolean; onError?: (message: string) => void },
+  ): OpenSessionOutcome => openSessionSafely((name) => ctx.get(name), sessionId, {
+    exitPanel: exitPanelPage,
+    restorePanel: enterPanelPage,
+    ...(options?.defer === undefined ? {} : { defer: options.defer }),
+    ...(options?.onError === undefined ? {} : { onDeferredError: options.onError }),
+  })
 
   // 侧栏入口（一枚）——**位次由宿主能力决定**：顶栏工具行 or 底栏回落。
   // 席位能力用 inject 探测（席位被声明时才回调），不依赖 spec 查询。
@@ -421,7 +437,7 @@ function StewardFamilySection(props: {
 export function StewardEntry(
   props: StewardFooterProps & {
     scope?: (StewardCardScope & { getSnapshot(): { value: StewardConfig | undefined } }) | undefined
-    openSession?: (sessionId: string) => void
+    openSession?: OpenSessionFn
   },
 ): ReactElement {
   const [open, setOpen] = useState(false)
@@ -485,6 +501,12 @@ function hasPanelToolSeat(slots: StewardSlotsService): boolean {
 
 export { hasPanelToolSeat }
 
+/** 管理台跳转入口：返回结果；`defer` = 退页后下一帧再导航。 */
+export type OpenSessionFn = (
+  sessionId: string,
+  options?: { defer?: boolean; onError?: (message: string) => void },
+) => OpenSessionOutcome
+
 /** 组合注销函数（逆序执行，幂等）。 */
 function composeDisposers(offs: Array<() => void>): () => void {
   let done = false
@@ -536,7 +558,7 @@ function gatedMount<V extends object>(
 function mountFooterEntries(
   slots: StewardSlotsService,
   bound: BridgeScope<StewardConfig>,
-  openSession: (sessionId: string) => void,
+  openSession: OpenSessionFn,
 ): () => void {
   const off = slots.inject('sidebar.footer.action', () => slots.register(
     { name: 'sidebar.footer.action', id: STEWARD_ENTRY_ID, order: 6 },
@@ -557,7 +579,7 @@ function mountFooterEntries(
 function mountTopToolEntries(
   slots: StewardSlotsService,
   bound: BridgeScope<StewardConfig>,
-  openSession: (sessionId: string) => void,
+  openSession: OpenSessionFn,
   closePanel: () => void,
 ): () => void {
   /** 管理页：管理台 / 体检 双页签，页签可见性与底栏入口同源。 */

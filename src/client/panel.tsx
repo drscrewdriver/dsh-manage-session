@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom'
 import { HealthPanel } from './health-panel.tsx'
 import { ManageConsole } from './manage.tsx'
 import { translate, type LocaleKey } from './locales.ts'
+import type { OpenSessionOutcome } from './host-api.ts'
 
 /** 面板字典面。 */
 export type PanelTranslate = (key: LocaleKey, params?: Record<string, unknown>) => string
@@ -28,8 +29,11 @@ export interface StewardPanelProps {
   t?: PanelTranslate
   /** 健康检查子域是否可见（关掉只剩管理页签）。 */
   healthCheck: boolean
-  /** 打开会话（管理台行点击;apply 侧经 openSessionThrough 解析）。 */
-  openSession?: (sessionId: string) => void
+  /**
+   * 打开会话（管理台行点击;apply 侧经 `openSessionSafely` 解析：
+   * 先退面板页、下一帧再导航，失败不抛错）。
+   */
+  openSession?: (sessionId: string, options?: { defer?: boolean; onError?: (message: string) => void }) => OpenSessionOutcome
   onClose: () => void
   /**
    * 壳形态：`dialog`（缺省）= 背景遮罩上的浮动对话框（底栏入口用）；
@@ -76,7 +80,11 @@ export function StewardPanel({ t, healthCheck, openSession, onClose, variant = '
 
   const body: ReactElement = tab === 'manage'
     ? createElement('div', { style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } },
-        createElement(ManageConsole, { open: openSession ?? (() => {}) }))
+        createElement(ManageConsole, {
+          open: openSession ?? (() => ({ ok: false, error: '' })),
+          // 整页形态必须退页后再延一帧导航，否则第一次点击只会把页面关掉。
+          deferOpen: variant === 'page',
+        }))
     : createElement(HealthPanel, { t, onClose })
 
   const panelEl = createElement('div', {
