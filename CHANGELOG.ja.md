@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.13
+
+**初回表示の即時化＋タイトルのフレーム単位ストリーミング補完。**
+
+- `session-catalog` は `sessionQuery.readTitleSnapshots`（ログ全体を展開して最後のタイトルを fold する契約。実測 252 セッション / 858 MB / 12.4 秒）を呼ばなくなりました。タイトルは I/O 不要の 3 段階で解決します：アクティブセッションのライブ投影 → `sessionProjectionCache` の checkpoint → セッション単位のキャッシュファイル。どれも外れた場合だけ `pending` になります。実測：243/252 は初回応答でタイトルあり（3 サービス全て不在でキャッシュファイルのみの場合でも 373 ms）、`pending` は 9 件。
+- fenced メソッド **`session-catalog-stream`** を追加（`text/event-stream`、POST のみ）：`pending` を DRS 流の**フレーム単位**で読みます — 先頭 256 KB の窓から、`session/title` を含むフレームが出るまでだけ展開し、フレームごとに `await`（スレッドプール）し８フレーム毎に制御を戻します。窓は ×4 で 8 MB / 32 フレーム / 8 秒の予算まで。実測：9 件中 5 件を 558 KB・35 フレーム・26 ms で補完、最終カバレッジ 248/252（残り 4 件は本当に `session/title` を持たない）。
+- `titleSource` フィールドを追加：`live` / `cache` / `pending` / `none`（旧クライアントは無視可）。
+- 中止可能：パネルを閉じる / クライアント abort → `req|res.close` で `AbortController` が発火し、ホストは即座に読み取りを停止します（`aborted after N frames`）。
+- プロセス内タイトル memo（TTL 5 分、`live` は入れず、`none` は否定結論として保持）。クリーンアップ後は id 単位、アーカイブ／解除後は全件無効化。
+- ついでの修正：`runtime.sessionQuery` を遅延 getter に（サービスの後乗せで永遠に `undefined` になっていた）。
+
 ## 1.0.0
 
 `dsh-session-steward` 0.5.7 から複製・改名した独立パッケージの初版です（旧パッケージの履歴は

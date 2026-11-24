@@ -197,6 +197,144 @@ export async function callStewardItems<T>(method: string, body: unknown): Promis
   return { ok: false, items: [], error: res.error ?? '请求失败' }
 }
 
+/** 一条已切好的 SSE 帧（心跳/注释帧不产出）。 */
+export interface SseMessage {
+  /** 事件名；无 `event:` 字段时为 `message`。 */
+  event: string
+  /** 多行 `data:` 以 `\n` 连接后的原始载荷。 */
+  data: string
+}
+
+/**
+ * 解析**一个** SSE 帧（不含结尾空行分隔）。
+ *
+ * 容错约定：容忍 `\r\n`；`:` 开头是注释（心跳 `: ping`）；空行忽略；多行 `data:`
+ * 按规范用 `\n` 拼接；没有 `data:` 字段（如纯心跳）返回 undefined。
+ * **不 JSON.parse、不抛**：解析与业务解码分开，才好在 node 里单测。
+ */
+export function parseSseBlock(raw: string): SseMessage | undefined {
+  let event = ''
+  const data: string[] = []
+  for (const line of raw.split(/\r?\n/)) {
+    if (line === '' || line.startsWith(':')) continue
+    const colon = line.indexOf(':')
+    const field = colon === -1 ? line : line.slice(0, colon)
+    let value = colon === -1 ? '' : line.slice(colon + 1)
+    if (value.startsWith(' ')) value = value.slice(1)
+    if (field === 'event') event = value
+    else if (field === 'data') data.push(value)
+  }
+  if (data.length === 0) return undefined
+  return { event: event === '' ? 'message' : event, data: data.join('\n') }
+}
+
+/** 一条标题流事件（与 host 侧 CatalogTitleEvent 对齐）。 */
+export interface CatalogTitleStreamEvent {
+  sessionId: string
+  title?: string
+  source: string
+  bytesRead?: number
+  frames?: number
+}
+
+/** 流结束汇总（`event: done`）。 */
+export interface CatalogTitleStreamSummary {
+  resolved: number
+  pending: number
+}
+
+/**
+ * 标题分帧流（`session-catalog-stream`，POST + text/event-stream）。
+ *
+ * 不用 `EventSource`：fenced 路由只收 POST，`EventSource` 只能 GET 且带不了 body。
+ * 因此自己读 `ReadableStream`，自己按 `\n\n` 切块。
+ * 失败一律经 `onError` 汇报（不抛）：列表在流失败时必须保持可用。
+ * @param sessionIds - 待补标题的会话（首屏里的 `titleSource: 'pending'`）。
+ * @param handlers - 逐条标题 / 结束 / 错误回调。
+ * @returns `{ abort }`：组件卸载或重取时必须调用，宿主会立刻停读。
+ */
+export function streamCatalogTitles(
+  sessionIds: readonly string[],
+  handlers: {
+    onTitle: (event: CatalogTitleStreamEvent) => void
+    onDone?: (summary: CatalogTitleStreamSummary) => void
+    onError?: (message: string) => void
+  },
+): { abort: () => void } {
+  const controller = typeof AbortController === 'undefined' ? undefined : new AbortController()
+  let cancelled = false
+
+  const dispatch = (block: string): void => {
+    const message = parseSseBlock(block)
+    if (message === undefined) return
+    if (message.event === 'done') {
+      try {
+        handlers.onDone?.(JSON.parse(message.data) as CatalogTitleStreamSummary)
+      } catch {
+        handlers.onDone?.({ resolved: 0, pending: 0 })
+      }
+      return
+    }
+    if (message.event !== 'message' && message.event !== 'title') return
+    try {
+      const parsed = JSON.parse(message.data) as CatalogTitleStreamEvent
+      if (typeof parsed.sessionId === 'string') handlers.onTitle(parsed)
+    } catch {
+      // 非法 JSON 不抛：流式通道的容错面（一条坏帧不能打死整条流）。
+    }
+  }
+
+  const run = async (): Promise<void> => {
+    try {
+      const res = await fetch('/manage-session/api/session-catalog-stream', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+        body: JSON.stringify({ sessionIds: [...sessionIds] }),
+        signal: controller?.signal,
+      })
+      if (!res.ok || res.body === null) {
+        handlers.onError?.(`HTTP ${res.status}`)
+        return
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      try {
+        for (;;) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          // 凑齐一个完整帧（`\n\n` / `\r\n\r\n`）才分发；残块留到下一轮。
+          for (;;) {
+            const match = /\r?\n\r?\n/.exec(buffer)
+            if (match === null) break
+            const block = buffer.slice(0, match.index)
+            buffer = buffer.slice(match.index + match[0].length)
+            dispatch(block)
+          }
+        }
+        buffer += decoder.decode()
+        if (buffer.trim() !== '') dispatch(buffer)
+      } finally {
+        try {
+          await reader.cancel()
+        } catch { /* 已关闭 */ }
+      }
+    } catch (err) {
+      if (cancelled) return
+      handlers.onError?.(String(err instanceof Error ? err.message : err))
+    }
+  }
+
+  void run()
+  return {
+    abort: () => {
+      cancelled = true
+      controller?.abort()
+    },
+  }
+}
+
 /** 状态响应。 */
 export interface HealthStatusResponse {
   ok: boolean
@@ -215,6 +353,11 @@ export interface HostSessionItem {
   updatedAt: number
   /** 归档标记（合表语义）：缺省字段按「活跃」对待。 */
   archived?: boolean
+  /**
+   * 标题来源（2.0.13 新增，可选）：`live` 实时投影 / `cache` checkpoint 快照 /
+   * `pending` 待分帧流补齐 / `none` 已定论无标题。旧宿主半无此字段。
+   */
+  titleSource?: 'live' | 'cache' | 'pending' | 'none'
 }
 
 /**

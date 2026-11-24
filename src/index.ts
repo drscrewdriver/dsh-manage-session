@@ -47,6 +47,8 @@ import { decodeSessionLogFile } from './host/health/decode.ts'
 import { assessRepair, prescribe, quarantineProjectionCache } from './host/health/repair.ts'
 import { countCorpus, findSession, findSessionLog, scanSessions } from './host/health/scan.ts'
 import { gateSourceKind, migrateSessionSourceKind, readSourceKindFacts } from './host/health/source-kind.ts'
+import { TitleMemo, resolveTitlesFromProjections, type CatalogCtxFace, type CatalogTitleRecord } from './host/catalog/title-source.ts'
+import { streamCatalogTitles, type CatalogTitleEvent } from './host/catalog/stream.ts'
 
 export { DEFAULT_CONFIG, STEWARD_API_PREFIX, STEWARD_SETTINGS_NAMESPACE } from './config.ts'
 export type { StewardConfig } from './config.ts'
@@ -235,14 +237,26 @@ const MAX_SCAN_LIMIT = 200
 export interface StewardRuntime {
   config: () => Required<StewardConfig>
   dshHome: string
+  /**
+   * 宿主上下文镜像（`get(name)`）：标题的三级解析要按需取 `sessions` /
+   * `sessionProjections` / `sessionProjectionCache` 三个**可选**服务。
+   *
+   * 可选：缺席（单测/老装配）等价于「三个服务全缺」——全部降级为 `pending`，
+   * 不抛错也不 500。
+   */
+  ctx?: CatalogCtxFace
   registry: () => StewardRegistryFace | undefined
   projectionStateFor: (sessionId: string) => Record<string, unknown> | undefined
   attribute: (projection: string) => { projection?: string; package?: string; field?: string } | undefined
   log: (message: string) => void
   /**
-   * 管理台语料来源（宿主 `sessionQuery`；可选：缺席时 `session-catalog` 显式报错）。
+   * 管理台语料来源（宿主 `sessionQuery`；**惰性取**：服务可能晚于本插件装配，
+   * apply 时一次性取值会让晚挂载的宿主永远拿不到）。可选：缺席时 `session-catalog`
+   * 显式报错。
    */
-  sessionQuery?: SwitchSessionQuery
+  sessionQuery?: () => SwitchSessionQuery | undefined
+  /** 标题 memo（5 min TTL；可选，缺省表示不缓存）。`apply()` 总是提供实例。 */
+  titles?: TitleMemo
   /**
    * 体检结果缓存（进程内，随 fiber 存活）。
    *
@@ -281,7 +295,7 @@ export const HEALTH_METHODS = [
 
 /** 依据开关判定某方法是否启用。 */
 export function methodEnabled(method: string, config: Required<StewardConfig>): boolean {
-  if (method === 'session-catalog') return config.enabled !== false
+  if (method === 'session-catalog' || method === 'session-catalog-stream') return config.enabled !== false
   if ((HISTORY_METHODS as readonly string[]).includes(method)) return config.historyFiles !== false
   if ((HEALTH_METHODS as readonly string[]).includes(method)) return config.healthCheck !== false
   return false
@@ -310,24 +324,15 @@ interface SwitchSessionRecord {
   persisted: boolean
 }
 
-/** One title observation result (structural subset). */
-interface SwitchTitleObservationResult {
-  status: 'fulfilled' | 'rejected'
-  value?: { session: SwitchSessionHeader; title?: { title: string } }
-  reason?: unknown
-}
-
-/** The session-query service face used by the manage console catalog. */
+/**
+ * The session-query service face used by the manage console catalog.
+ *
+ * 只要 `listSessions()` 的 header：标题**不再**走 `readTitleSnapshots`（它的契约是
+ * 「解压整份日志再 fold」，就是首屏卡 12 s 的病根），改由三级零 I/O 解析 +
+ * 首帧分帧读补齐（见 `host/catalog/`）。
+ */
 interface SwitchSessionQuery {
   listSessions(signal?: AbortSignal): Promise<readonly SwitchSessionRecord[]>
-  readSession?(sessionId: string): Promise<{
-    session: SwitchSessionHeader
-    events: readonly unknown[]
-  }>
-  readTitleSnapshots(
-    sessionIds: readonly string[],
-    signal?: AbortSignal,
-  ): Promise<readonly SwitchTitleObservationResult[]>
 }
 
 /**
@@ -338,58 +343,189 @@ interface SwitchWorkspaceRegistry {
   readonly archivedSessionIds: readonly string[]
 }
 
-/** Fold titles for a set of sessions into a sessionId → title map. */
-async function titleMap(
-  sessionQuery: SwitchSessionQuery,
-  sessionIds: readonly string[],
-): Promise<ReadonlyMap<string, string>> {
-  if (sessionIds.length === 0) return new Map()
-  const observations = await sessionQuery.readTitleSnapshots([...new Set(sessionIds)])
-  const map = new Map<string, string>()
-  for (const observation of observations) {
-    if (observation.status !== 'fulfilled' || observation.value === undefined) continue
-    const title = observation.value.title?.title
-    if (typeof title === 'string' && title.trim().length > 0) map.set(observation.value.session.id, title)
-  }
-  return map
+/** 一行管理台语料（`titleSource` 为新增字段；旧客户端忽略即可）。 */
+export interface CatalogItem {
+  sessionId: string
+  title: string
+  cwd: string
+  updatedAt: number
+  archived: boolean
+  /**
+   * 标题来源：`live`（活跃会话实时投影）/ `cache`（checkpoint 快照）/
+   * `pending`（待分帧流补齐）/ `none`（已定论无标题，如 `im:*` 虚拟会话）。
+   */
+  titleSource: 'live' | 'cache' | 'pending' | 'none'
 }
 
-/** session-catalog: 管理台语料（活跃 + 归档同表，无自有索引、无 DRS）。 */
-async function listSessions(runtime: StewardRuntime): Promise<{ ok: boolean; items?: unknown[]; error?: string }> {
-  const sessionQuery = runtime.sessionQuery
+/** catalog 内部结果：对外条数 + 待分帧读取的会话。 */
+interface CatalogBuild {
+  items: CatalogItem[]
+  pending: CatalogTitleRecord[]
+}
+
+/** 三服务全缺时的空上下文（`ctx` 缺席与「服务全缺席」同义）。 */
+const NO_SERVICE_CTX: CatalogCtxFace = { get: () => undefined }
+
+/**
+ * session-catalog: 管理台语料（活跃 + 归档同表，无自有索引、无 DRS）。
+ *
+ * **秒回**：标题走「memo → live 投影 → checkpoint 快照 → 缓存文件」四级，全是
+ * 零 I/O 或单文件读；三级都没命中的进 `pending`，由 `session-catalog-stream`
+ * 分帧补齐。这里绝不调用 `readTitleSnapshots`（那是整份日志的代价）。
+ */
+async function buildCatalog(runtime: StewardRuntime): Promise<{ ok: true; built: CatalogBuild } | { ok: false; error: string }> {
+  const sessionQuery = runtime.sessionQuery?.()
   if (sessionQuery === undefined) return { ok: false, error: 'sessionQuery 服务不可用，无法列出会话' }
   // 归档集合与管理台写路同源（存储文件优先、registry 兜底）——否则清理后列表不跟。
   const archivedIds = new Set(readArchiveSet(runtime.registry(), storagePathsFor(runtime.dshHome)).ids)
   try {
     const records = await sessionQuery.listSessions()
-    const titles = await titleMap(sessionQuery, records.map(record => record.header.id))
+    const memo = runtime.titles
+    const catalogRecords: CatalogTitleRecord[] = records.map(record => ({ id: record.header.id, header: record.header }))
+    // memo 先行短路：命中即零 I/O，也不再进三级解析（批量操作后已被主动失效）。
+    const settled = new Map<string, { title: string; source: 'live' | 'cache' | 'pending' | 'none' }>()
+    const unresolved: CatalogTitleRecord[] = []
+    for (const record of catalogRecords) {
+      const hit = memo?.get(record.id)
+      if (hit === undefined) unresolved.push(record)
+      else settled.set(record.id, { title: hit.title, source: hit.source === 'prefix' ? 'cache' : hit.source })
+    }
+    const resolved = resolveTitlesFromProjections(runtime.ctx ?? NO_SERVICE_CTX, unresolved, runtime.dshHome)
+    for (const [sessionId, entry] of resolved.titles) {
+      settled.set(sessionId, entry)
+      memo?.set(sessionId, entry.title, entry.source)
+    }
     const seen = new Set<string>()
-    const items: unknown[] = records.map((record) => {
-      seen.add(record.header.id)
+    const items: CatalogItem[] = records.map((record) => {
+      const sessionId = record.header.id
+      seen.add(sessionId)
+      const known = settled.get(sessionId)
       return {
-        sessionId: record.header.id,
-        title: titles.get(record.header.id) ?? '',
+        sessionId,
+        title: known?.title ?? '',
         cwd: record.header.cwd ?? '',
         updatedAt: record.header.createdAt,
-        archived: archivedIds.has(record.header.id),
+        archived: archivedIds.has(sessionId),
+        titleSource: known?.source ?? 'pending',
       }
     })
     // 归档集合里未被 sessionQuery 语料覆盖的 id（老线/离线条目）也列出来，
     // 否则「归档域筛选」会漏掉真实存在于归档数组里的会话。
     for (const sessionId of archivedIds) {
       if (seen.has(sessionId)) continue
-      items.push({ sessionId, title: '', cwd: '', updatedAt: 0, archived: true })
+      items.push({ sessionId, title: '', cwd: '', updatedAt: 0, archived: true, titleSource: 'none' })
     }
-    return { ok: true, items }
+    const pending = resolved.pending
+    return { ok: true, built: { items, pending: [...pending] } }
   } catch (err) {
     return { ok: false, error: String(err instanceof Error ? err.message : err) }
   }
 }
 
-/** 管理台语料运行时（无索引、无 DRS；只认宿主 sessionQuery + 官方归档集合）。 */
-interface CatalogRuntime {
-  sessionQuery: SwitchSessionQuery | undefined
-  registry: () => { archivedSessionIds: readonly string[] }
+/** session-catalog 的对外形状（向后兼容：只加字段）。 */
+async function listSessions(
+  runtime: StewardRuntime,
+): Promise<{ ok: boolean; items?: unknown[]; pending?: number; error?: string }> {
+  const outcome = await buildCatalog(runtime)
+  if (!outcome.ok) return { ok: false, error: outcome.error }
+  return { ok: true, items: outcome.built.items, pending: outcome.built.pending.length }
+}
+
+/** SSE 心跳间隔（防中间层把空闲连接掐掉）。 */
+const SSE_HEARTBEAT_MS = 10_000
+
+/**
+ * `session-catalog-stream`：逐条推标题（`POST` + `text/event-stream`）。
+ *
+ * 为什么不用 `EventSource`：fenced 路由只收 `POST`，而 `EventSource` 只能 GET、
+ * 不能带自定义头。客户端因此用 `fetch` + `ReadableStream` 自解析（解析函数抽成
+ * 纯函数，便于 node 单测）。
+ *
+ * 中止三处任一触发都要停读：`req`/`res` 的 `close`（面板关闭 / 连接断开）与
+ * 写失败（客户端已经走了）。
+ *
+ * 导出以便单测直接起一个真 HTTP 服务验证帧序列（不需要装配整个宿主）。
+ */
+export async function serveCatalogStream(
+  req: IncomingMessage,
+  res: ServerResponse,
+  payload: unknown,
+  runtime: StewardRuntime,
+): Promise<void> {
+  if (!methodEnabled('session-catalog-stream', runtime.config())) {
+    writeJson(res, 200, { ok: false, error: '子域已关闭（enabled=false）：session-catalog-stream 未注册' })
+    return
+  }
+  const built = await buildCatalog(runtime)
+  if (!built.ok) {
+    writeJson(res, 200, { ok: false, error: built.error })
+    return
+  }
+  // 缺省 = 本次首屏的全部 pending；显式给 sessionIds 时只读这些（事件形状不变）。
+  const requested = validSessionIds((payload as { sessionIds?: unknown } | null)?.sessionIds)
+  const records: CatalogTitleRecord[] = requested === undefined
+    ? [...built.built.pending]
+    : requested.map(id => ({ id, header: { id } }))
+
+  const controller = new AbortController()
+  const abort = (): void => { controller.abort() }
+  // 连接真的断了才中止：`socket` 已销毁且响应未结束。Node 22 实测「请求体读完」
+  // 不发 `req` 的 `close`，但有些宿主包装会在请求完成时补发一次 —— 不加上这道
+  // 闸门，那条补发的 `close` 会把刚开始的流打成 abort。
+  const onRequestClose = (): void => {
+    if (req.destroyed && !res.writableEnded) controller.abort()
+  }
+  req.on('close', onRequestClose)
+  res.on('close', abort)
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': ping\n\n')
+    } catch { /* 连接已断：close 会兜底 */ }
+  }, SSE_HEARTBEAT_MS)
+  heartbeat.unref?.()
+
+  let resolved = 0
+  let pending = 0
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache',
+    connection: 'keep-alive',
+    // 中间层（代理/端口转发）不许缓冲：否则逐条推送会被攒成一团。
+    'x-accel-buffering': 'no',
+  })
+  res.flushHeaders?.()
+  try {
+    await streamCatalogTitles(records, {
+      dshHome: runtime.dshHome,
+      signal: controller.signal,
+      onTitle: (event: CatalogTitleEvent) => {
+        // timeout 不是结论（只是预算到了），不得进 memo。
+        if (event.source !== 'timeout') runtime.titles?.set(event.sessionId, event.title, event.source)
+        if (event.title === undefined || event.title === '') pending += 1
+        else resolved += 1
+        try {
+          res.write(`data: ${JSON.stringify(event)}\n\n`)
+        } catch {
+          abort()
+        }
+      },
+      log: runtime.log,
+    })
+    try {
+      res.write(`event: done\ndata: ${JSON.stringify({ resolved, pending })}\n\n`)
+    } catch { /* 客户端已断：done 帧没人收 */ }
+  } catch (err) {
+    // 流已开后改不了状态码：记日志并结束，不把异常升给路由层。
+    runtime.log(`session-catalog-stream failed: ${String(err instanceof Error ? err.message : err)}`)
+  } finally {
+    clearInterval(heartbeat)
+    controller.abort()
+    req.off('close', onRequestClose)
+    res.off('close', abort)
+    try {
+      res.end()
+    } catch { /* 已结束 */ }
+  }
 }
 
 interface MemoryRegistryFace {
@@ -470,7 +606,7 @@ export async function handleMethod(
   // 设置桥方法不受子域闸管——关掉 enabled/historyFiles/healthCheck 后仍必须
   // 能读配置（否则卡片永远读不到「把它打开」的开关）。
   const settingsMethods = method === 'settings-describe' || method === 'settings-mutate'
-  const known = [...HISTORY_METHODS, ...HEALTH_METHODS, 'session-catalog', 'settings-describe', 'settings-mutate'] as readonly string[]
+  const known = [...HISTORY_METHODS, ...HEALTH_METHODS, 'session-catalog', 'session-catalog-stream', 'settings-describe', 'settings-mutate'] as readonly string[]
   if (!known.includes(method)) {
     return { ok: false, error: `未知的 manage-session API 方法 "${method}"` }
   }
@@ -496,6 +632,10 @@ export async function handleMethod(
   if (method === 'session-catalog') {
     return await listSessions(runtime)
   }
+  if (method === 'session-catalog-stream') {
+    // SSE 必须由路由直接写响应流；`handleMethod` 是「返回 JSON」的纯函数面。
+    return { ok: false, error: 'session-catalog-stream 是 text/event-stream，只能经 fenced 路由调用' }
+  }
   if (method === 'session-history-archive') {
     const request = (payload ?? {}) as { sessionIds?: unknown }
     const ids = validSessionIds(request.sessionIds)
@@ -507,6 +647,9 @@ export async function handleMethod(
       const before = new Set(mem.archivedSessionIds ?? [])
       const { succeeded, failures } = await runMemoryArchiveOps(mem, ids, 'archive')
       const total = (mem.archivedSessionIds ?? []).length
+      // 可见性变了：列表要重排，标题 memo 就不能留着旧行（标题本身可能未变，
+      // 但 archived/分组位置变了，重取时的 settled 结论也要重算）。
+      runtime.titles?.invalidateAll()
       return {
         ok: true,
         added: ids.filter(id => !before.has(id)).length,
@@ -515,7 +658,9 @@ export async function handleMethod(
         ...(failures.length === 0 ? {} : { failures }),
       }
     }
-    return archiveHistory(payload, runtime.log, storagePathsFor(runtime.dshHome))
+    const archived = archiveHistory(payload, runtime.log, storagePathsFor(runtime.dshHome))
+    if (archived.ok) runtime.titles?.invalidateAll()
+    return archived
   }
   if (method === 'session-history-prune') {
     const request = (payload ?? {}) as { sessionIds?: unknown }
@@ -525,6 +670,7 @@ export async function handleMethod(
     if (mem?.unarchiveSession !== undefined && ids !== undefined) {
       const { succeeded, failures } = await runMemoryArchiveOps(mem, ids, 'unarchive')
       const remaining = (mem.archivedSessionIds ?? []).length
+      runtime.titles?.invalidateAll()
       return {
         ok: true,
         removed: succeeded.length,
@@ -533,7 +679,9 @@ export async function handleMethod(
         ...(failures.length === 0 ? {} : { failures }),
       }
     }
-    return pruneHistory(payload, runtime.log, storagePathsFor(runtime.dshHome))
+    const pruned = pruneHistory(payload, runtime.log, storagePathsFor(runtime.dshHome))
+    if (pruned.ok) runtime.titles?.invalidateAll()
+    return pruned
   }
   if (method === 'session-history-purge') {
     const request = (payload ?? {}) as { sessionIds?: unknown }
@@ -564,6 +712,8 @@ export async function handleMethod(
           failures.push({ sessionId: id, reason: String(err instanceof Error ? err.message : err) })
         }
       }
+      // 实体已删：旧结论（含 `none` 负缓存）一律作废，否则 5 min 内重取会报幽灵行。
+      runtime.titles?.invalidate(ids)
       return {
         ok: true,
         purged: succeeded.length,
@@ -572,10 +722,12 @@ export async function handleMethod(
         ...(failures.length === 0 ? {} : { failures }),
       }
     }
-    return purgeHistory(payload, runtime.log, {
+    const purged = purgeHistory(payload, runtime.log, {
       dshHome: runtime.dshHome,
       searchPaths: storagePathsFor(runtime.dshHome),
     })
+    if (purged.ok) runtime.titles?.invalidate(ids)
+    return purged
   }
 
   if (method === 'session-history-favorites-list') {
@@ -831,13 +983,17 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
     config: () => current(),
     settingsBridge,
     dshHome: resolvedHome,
+    ctx: ctx as unknown as CatalogCtxFace,
     registry,
     projectionStateFor,
     attribute: attributor,
     log,
     cache: new HealthCache(),
-    // 管理台语料：宿主 sessionQuery（惰性取，装载序不保证）。
-    sessionQuery: ctx.get('sessionQuery') as SwitchSessionQuery | undefined,
+    // 管理台语料：宿主 sessionQuery（**惰性取**：服务晚挂载时仍能拿到；
+    // apply 时一次性取值会让晚挂载的宿主永远 undefined）。
+    sessionQuery: () => ctx.get('sessionQuery') as SwitchSessionQuery | undefined,
+    // 标题 memo：5 min TTL，批量处置成功后主动失效（见 handleMethod 的写路）。
+    titles: new TitleMemo(),
   }
 
   // ── dsh-tui 终端面：`/sessions` ────────────────────────────────
@@ -871,6 +1027,11 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
       }
       try {
         const payload = await readJsonBody(req)
+        // SSE 走单独分支：它写的是流，不是一次性 JSON（且 handleMethod 返回 JSON）。
+        if (method === 'session-catalog-stream') {
+          await serveCatalogStream(req, res, payload, runtime)
+          return
+        }
         writeJson(res, 200, await handleMethod(method, payload, runtime))
       } catch (err) {
         // 显式失败：任何未识别方法/异常都返回错误，绝不静默。

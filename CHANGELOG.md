@@ -1,5 +1,29 @@
 # Changelog / 变更日志
 
+## 2.0.13
+
+**首屏秒回 + 标题分帧流式补齐。**
+
+- `session-catalog` 不再调用 `sessionQuery.readTitleSnapshots`（它的契约是「解压整份日志再
+  fold 末标题」，实测 252 个会话 858 MB / 12.4 s）。标题改走三级零 I/O 解析：活跃会话实时
+  投影 → `sessionProjectionCache` 的 checkpoint 快照 → 逐条缓存文件；三级都未命中才落
+  `pending`。本机实测：243/252 首屏即出标题（三服务全缺席、只走缓存文件兜底时 373 ms），
+  `pending` 仅 9 条。
+- 新增 fenced 方法 **`session-catalog-stream`**（`text/event-stream`，仍只收 POST）：对
+  `pending` 会话按 DRS 范式**分帧**读日志 —— 首窗 256 KB 起 × 只解压到出现
+  `session/title` 的帧为止，逐帧 `await`（线程池）且每 8 帧让路，窗口 ×4 扩张至 8 MB /
+  32 帧 / 8 s 预算。本机实测补全 5/9 条，共读 558 KB、35 帧，26 ms；最终覆盖 248/252
+  （剩下 4 条确实没有 `session/title` 事件）。
+- 新增 `titleSource` 字段：`live` / `cache` / `pending` / `none`。旧客户端忽略即可，旧字段
+  全保留。
+- 可中止：面板关闭 / 客户端 abort → `req|res.close` 触发 `AbortController`，宿主立刻停读
+  （日志留下 `aborted after N frames`）。
+- 进程内标题 memo（5 min TTL，`live` 不入 memo，`none` 负结论入 memo）；清理成功后按 id 失效，
+  归档/取消归档后全量失效。
+- 顺手修：`runtime.sessionQuery` 改惰性 getter（服务晚挂载时不再永久 `undefined`）。
+- 新增单测：`frame-title` / `catalog-title-source` / `catalog-stream`（vitest）与
+  `client-sse`（node，纯函数级解析 + 假 fetch 的跨块拼接）。
+
 ## 2.0.0
 
 - i18n: add Portuguese (pt-BR) locale — runtime dictionary, package metadata and README/INSTALL/CHANGELOG mirrors.

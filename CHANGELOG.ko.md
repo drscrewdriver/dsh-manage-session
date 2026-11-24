@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.13
+
+**첫 화면 즉시 표시 + 제목의 프레임 단위 스트리밍 보완.**
+
+- `session-catalog`는 `sessionQuery.readTitleSnapshots`(로그 전체를 풀어 마지막 제목을 fold하는 계약. 실측 252 세션 / 858 MB / 12.4초)를 더 이상 호출하지 않습니다. 제목은 I/O 없는 3단계로 해결합니다: 활성 세션의 라이브 투영 → `sessionProjectionCache` 체크포인트 → 세션별 캐시 파일. 모두 없을 때만 `pending`이 됩니다. 실측: 243/252는 첫 응답에 제목이 있고(세 서비스가 모두 없고 캐시 파일만 쓸 때도 373 ms), `pending`은 9건.
+- fenced 메서드 **`session-catalog-stream`** 추가(`text/event-stream`, POST 전용): `pending`을 DRS 방식의 **프레임 단위**로 읽습니다 — 선두 256 KB 창에서 `session/title` 프레임이 나올 때까지만 압축을 풀고, 프레임마다 `await`(스레드 풀)하며 8프레임마다 제어를 놓아줍니다. 창은 ×4로 8 MB / 32프레임 / 8초 예산까지. 실측: 9건 중 5건을 558 KB·35프레임·26 ms로 보완, 최종 커버리지 248/252(나머지 4건은 정말로 `session/title`이 없음).
+- `titleSource` 필드 추가: `live` / `cache` / `pending` / `none`(구 클라이언트는 무시 가능).
+- 중단 가능: 패널을 닫거나 클라이언트 abort → `req|res.close`가 `AbortController`를 발동해 호스트가 즉시 읽기를 멈춥니다(`aborted after N frames`).
+- 프로세스 내 제목 memo(5분 TTL, `live`는 넣지 않고 `none`은 부정 결로로 보관). 정리 후에는 id 단위, 보관/해제 후에는 전량 무효화.
+- 덤으로 고침: `runtime.sessionQuery`를 지연 getter로(서비스가 늦게 붙을 때 영원히 `undefined`이던 것).
+
 ## 1.0.0
 
 `dsh-session-steward` 0.5.7에서 복제·개명한 독립 패키지의 첫 버전입니다(구 패키지 이력은 해당

@@ -10,6 +10,11 @@ Plugin DSH Web: **console unificado de sessões ativas e arquivadas + revisão d
   trabalho: filtro de domínio (todos / ativas / arquivadas), filtro por título, favoritos, e três
   operações **não equivalentes** em lote após marcar caixas — arquivar, desarquivar, purgar arquivos
   do arquivo (exclusão real no disco, irreversível). Cada linha traz título, espaço de trabalho e data.
+- **Primeira renderização instantânea** — o `session-catalog` lê apenas fontes de título sem I/O
+  (projeção ao vivo do host / checkpoints do cache de projeção), levando a primeira renderização de
+  ~12 s para menos de um segundo; os títulos restantes chegam do `session-catalog-stream` (SSE)
+  frame a frame, parando no primeiro frame `session/title` (medido 858 MB → 558 KB) e interrompendo
+  a leitura no instante em que o painel fecha.
 - **Revisão de saúde** (aba reserva) — revisão em quatro portas → receita (lista de comandos)
   → alta (disposições reversíveis + antes/depois).
 

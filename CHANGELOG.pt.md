@@ -1,5 +1,30 @@
 # Registro de mudanças
 
+## 2.0.13
+
+**Primeira renderização instantânea + títulos completados por streaming de frames.**
+
+- `session-catalog` deixou de chamar `sessionQuery.readTitleSnapshots` (contrato "descomprimir o log
+  inteiro e depois foldar o último título": 252 sessões, 858 MB, 12.4 s nesta máquina). Os títulos
+  vêm agora de três níveis sem I/O: projeção ao vivo da sessão ativa → checkpoint em
+  `sessionProjectionCache` → arquivo de cache por sessão. Só o que não casa em nenhum nível fica
+  `pending`. Medido: 243/252 títulos já na primeira resposta (373 ms no pior caso, só com o arquivo
+  de cache, sem nenhum dos três serviços); `pending` = 9.
+- Novo método fenced **`session-catalog-stream`** (`text/event-stream`, continua só POST): lê os
+  `pending` **por frames** no estilo DRS — primeira janela de 256 KB, descomprimindo só até aparecer
+  o frame com `session/title`, `await` por frame (thread pool), cedendo a thread a cada 8 frames,
+  janela ×4 até 8 MB / 32 frames / orçamento de 8 s. Medido: 5 de 9 completados, 558 KB e 35 frames
+  em 26 ms; cobertura final 248/252 (as 4 restantes realmente não têm evento `session/title`).
+- Novo campo `titleSource`: `live` / `cache` / `pending` / `none` (clientes antigos ignoram).
+- Cancelável: fechar o painel / abort do cliente → `req|res.close` dispara `AbortController` e o host
+  para de ler imediatamente (`aborted after N frames`).
+- Memo de títulos no processo (TTL de 5 min; `live` não entra; `none` entra como conclusão negativa).
+  Invalidado por id após purga e totalmente após arquivar/desarquivar.
+- Correção de lambuja: `runtime.sessionQuery` virou getter preguiçoso (serviço montado tarde não
+  fica mais `undefined` para sempre).
+- Novos testes: `frame-title` / `catalog-title-source` / `catalog-stream` (vitest) e `client-sse`
+  (node: parser puro + fetch falso com frames cortados entre blocos).
+
 ## 2.0.0
 
 - i18n: add Portuguese (pt-BR) locale — runtime dictionary, package metadata and README/INSTALL/CHANGELOG mirrors.

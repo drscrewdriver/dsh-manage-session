@@ -8,6 +8,10 @@ A DSH web plugin: **one console over active and archived sessions + a four-gate 
 - **Manage (main page)** — sessions grouped by workspace, **active + archived**: domain filter
   (all / active / archived), title filter, favorites, and batch archive / unarchive / purge
   (real deletion, irreversible).
+- **Instant first paint** — `session-catalog` reads only zero-I/O title sources (host live
+  projections / projection-cache checkpoints), taking first paint from ~12 s to sub-second; the
+  remaining titles stream in from `session-catalog-stream` (SSE) frame by frame, stopping at the
+  first `session/title` frame (measured 858 MB → 558 KB) and halting the moment the panel closes.
 - **Checkup (secondary tab)** — four gates → prescription → discharge (reversible repair).
 
 > Reversible operations only. **No search or index of its own, and no DRS dependency**:

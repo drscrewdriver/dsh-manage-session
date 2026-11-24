@@ -9,8 +9,8 @@
  * 动作面:session-history-archive / prune / purge（写官方存储文件,重启后
  * 侧栏完全生效——宿主半在成功路径上已同步联动索引）。
  */
-import { createElement, useEffect, useMemo, useState, type ReactElement } from 'react'
-import { callSteward, callStewardItems, type HostSessionItem } from './host-api.ts'
+import { createElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem } from './host-api.ts'
 import { translate, type LocaleKey } from './manage-locales.ts'
 
 /** 管理台字典面（search 子域命名空间的键集）。 */
@@ -110,17 +110,60 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
     void callSteward('session-history-favorite-set', { sessionId, favorite: next })
   }
 
+  // 标题分帧流句柄：重取/卸载时必须 abort（否则宿主会接着把日志读完）。
+  const titleStream = useRef<{ abort: () => void } | null>(null)
+
   // 语料：挂载取一次;批量成功后 setSessions(null) 重取（宿主半已联动索引）。
+  // 首屏只拿得到零 I/O 的标题（live/checkpoint）；剩下的 `pending` 行由
+  // session-catalog-stream 逐条补齐，就地替换该行标题（不整表重渲染）。
   useEffect(() => {
     if (sessions !== null) return
     let cancelled = false
     callStewardItems<HostSessionItem>('session-catalog', {}).then((res) => {
       if (cancelled) return
-      if (res.ok) { setSessions(res.items); setSelected(new Set()); setConfirmPurge(false) }
-      else setSessionsError(res.error ?? '读取会话列表失败')
+      if (res.ok) {
+        setSessions(res.items); setSelected(new Set()); setConfirmPurge(false)
+        const pending = res.items
+          .filter(item => item.titleSource === 'pending')
+          .map(item => item.sessionId)
+        titleStream.current?.abort()
+        titleStream.current = null
+        if (pending.length === 0) return
+        titleStream.current = streamCatalogTitles(pending, {
+          onTitle: (event) => {
+            setSessions(prev => prev === null ? prev : prev.map(row => (row.sessionId === event.sessionId
+              ? {
+                  ...row,
+                  ...(typeof event.title === 'string' && event.title !== '' ? { title: event.title } : {}),
+                  titleSource: (event.source === 'prefix'
+                    ? 'cache'
+                    : event.source === 'none' ? 'none' : row.titleSource) as HostSessionItem['titleSource'],
+                }
+              : row)))
+          },
+          onError: () => {
+            // 流失败（网络断/宿主不支持）：列表保持可用，待定行降为「无标题」，
+            // 不得保持 pending 状态——否则每次重渲染都会再起一条流。
+            setSessions(prev => prev === null ? prev : prev.map(row => (row.titleSource === 'pending'
+              ? { ...row, titleSource: 'none' }
+              : row)))
+          },
+        })
+      } else setSessionsError(res.error ?? '读取会话列表失败')
     })
-    return () => { cancelled = true }
+    return () => {
+      // 只丢弃本次取数的结果；**不 abort 流**——`sessions` 每次就地替换都会重跑
+      // 本 effect，在这里 abort 等于「收到第一条标题就掐断整条流」。流的生命周期
+      // 归 unmount（见下方空依赖 effect）与显式重取（runBatch）管。
+      cancelled = true
+    }
   }, [sessions])
+
+  // 卸载即停读：面板关闭 / 页面跳转后宿主不得继续解压日志。
+  useEffect(() => () => {
+    titleStream.current?.abort()
+    titleStream.current = null
+  }, [])
 
   // workspace（cwd）分组,未分组排最后;域过滤（archived 缺省按活跃对待,兼容旧宿主半）。
   const manageGroups = useMemo<{ cwd: string; items: HostSessionItem[] }[]>(() => {
@@ -196,6 +239,13 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
     })
   }, [workspaceFilter])
 
+  /** 行标题：`pending` 先占位（会被流覆盖），`none` 就是真的无标题。 */
+  const rowTitle = (item: HostSessionItem): string => {
+    if (item.title !== '') return item.title
+    if (item.titleSource === 'pending') return translate(t, 'manage.title.pending')
+    return translate(t, 'panel.untitled')
+  }
+
   /** 批量动作;删除两步确认。 */
   const runBatch = (kind: 'archive' | 'unarchive' | 'purge'): void => {
     const ids = [...selected]
@@ -221,6 +271,9 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
       setBatch({ busy: false, message, ok: res.ok === true })
       if (res.ok) {
         setSelected(new Set())
+        // 重取前先掐旧流：旧列表即将作废，继续读只是白耗磁盘。
+        titleStream.current?.abort()
+        titleStream.current = null
         setSessions(null)
       }
     })
@@ -354,7 +407,7 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
           role: 'button',
           tabIndex: 0,
           className: 'dmss_row',
-          title: item.title || translate(t, 'panel.untitled'),
+          title: rowTitle(item),
           onClick: () => { open(item.sessionId) },
           onKeyDown: (e: { key: string }) => { if (e.key === 'Enter' || e.key === ' ') open(item.sessionId) },
         }, [
@@ -374,7 +427,7 @@ export function ManageConsole({ t, open }: { t?: ManageTranslate; open: (session
               style: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '13px', lineHeight: 1, padding: '0 2px', color: favorites.has(item.sessionId) ? 'var(--dsw-alias-state-warn-label, #d97706)' : 'var(--dsw-alias-label-caption)' },
               onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation(); toggleFavorite(item.sessionId) },
             }, favorites.has(item.sessionId) ? '★' : '☆'),
-            createElement('span', { key: 'x', className: 'dmss_titleText' }, item.title || translate(t, 'panel.untitled')),
+            createElement('span', { key: 'x', className: 'dmss_titleText' }, rowTitle(item)),
             item.archived === true && createElement('span', { key: 'arch', className: 'dmss_tagArch' }, translate(t, 'tag.archived')),
             createElement('span', { key: 'tag', className: 'dmss_tag' }, fmtTime(item.updatedAt)),
           ]),
