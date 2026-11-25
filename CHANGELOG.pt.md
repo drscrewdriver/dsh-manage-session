@@ -1,5 +1,14 @@
 # Registro de mudanças
 
+## 2.0.17
+
+**Nova “área de limpeza” no painel: o que não foi apagado por completo fica visível, pode ser tratado ali e os comandos de exclusão podem ser copiados.**
+
+- No rodapé do painel, a “área de limpeza”: `session-tombstones` devolve apenas **exclusões incompletas** (`pending-cleanup` / tombstone inválida), com uuid, motivo e estado por linha.
+- Ações na linha: **repetir exclusão** (reusa o purge: arquivar → detach → apagar → verificação posterior) e **revogar tombstone** (só quando não há entidade; o host revalida).
+- Comandos copiáveis (`list / trash / compact / tombstones / ledger`, com o aviso de sair do DSH e rodar no diretório do profile); o caminho do registro também aparece.
+- Novos métodos: `session-tombstones` (somente leitura) e `session-tombstone-forget` (escrita; recusa se a entidade ainda existir), sob o switch `historyFiles`.
+
 ## 2.0.16
 
 **README em fonte única (10 idiomas) + busca por área de trabalho com prefixo + reforço da palavra-chave archive.**

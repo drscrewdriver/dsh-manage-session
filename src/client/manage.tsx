@@ -68,6 +68,14 @@ function injectManageStyles(): () => void {
 .dmss_status{color:var(--dsw-alias-label-tertiary);padding:10px 8px 8px;font-size:12px;line-height:18px}
 .dmss_empty{color:var(--dsw-alias-label-tertiary);padding:10px 8px 8px;font-size:12px;line-height:18px}
 .dmss_error{color:var(--dsw-alias-state-error-primary);padding:8px;font-size:12px;line-height:18px}
+.dmss_cleanup{flex:none;margin:10px 8px 0;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.05))}
+.dmss_cleanupHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dmss_cleanupTitle{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary)}
+.dmss_cleanupRow{display:flex;align-items:center;gap:8px;margin-top:6px;min-width:0}
+.dmss_cleanupId{flex:none;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dmss_cleanupReason{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.dmss_cmd{margin:6px 0 0;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.08));color:var(--dsw-alias-label-secondary);font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:17px;white-space:pre;overflow:auto;max-height:132px}
+.dmss_cleanupHint{margin-top:6px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;word-break:break-all}
 `
   document.head.appendChild(tag)
   return () => {
@@ -77,6 +85,25 @@ function injectManageStyles(): () => void {
 
 /** 最近一次跳转失败的原因（跨重挂保留：退页失败后恢复面板页时还能看到）。 */
 let lastOpenError: string | null = null
+
+/** 清理区的一行（host `session-tombstones` 的 pending 项）。 */
+interface CleanupRow {
+  sessionId: string
+  state: string
+  reason: string
+  retiredAt: string
+  cwd: string
+  entityExists: boolean
+}
+
+/** 确定性清理命令（面板里可一键复制；需先完全退出 DSH，再在 profile 目录执行）。 */
+export const CLEANUP_COMMANDS = [
+  'node node_modules/dsh-manage-session/scripts/session-purge.mjs list',
+  'node node_modules/dsh-manage-session/scripts/session-purge.mjs trash --class empty-session --archive-first',
+  'node node_modules/dsh-manage-session/scripts/session-purge.mjs compact --older-than 7 --window week',
+  'node node_modules/dsh-manage-session/scripts/session-purge.mjs tombstones',
+  'node node_modules/dsh-manage-session/scripts/session-purge.mjs ledger',
+].join('\n')
 
 /** 批量管理台主体（自持语料/勾选/批量状态）。 */
 export function ManageConsole({ t, open, deferOpen = false }: {
@@ -107,6 +134,10 @@ export function ManageConsole({ t, open, deferOpen = false }: {
   const [showAllWorkspaces, setShowAllWorkspaces] = useState(false)
   // 分组收拢:勾选的组键(cwd);定位 chip 选中时该组自动展开。
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set())
+  // 清理区（墓碑区）：只显示没删干净的条目 + 台账路径；挂载与每次删除后刷新。
+  const [cleanup, setCleanup] = useState<{ pending: CleanupRow[]; ledger: string } | null>(null)
+  const [cleanupBusy, setCleanupBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   // 收藏集合:挂载取一次。
   useEffect(() => {
@@ -128,6 +159,61 @@ export function ManageConsole({ t, open, deferOpen = false }: {
       return copy
     })
     void callSteward('session-history-favorite-set', { sessionId, favorite: next })
+  }
+
+  /** 刷新清理区（只读）：host 只返回 pending-cleanup / 墓碑失效的条目。 */
+  const refreshCleanup = (): void => {
+    void callSteward<{ pending?: CleanupRow[]; ledger?: string }>('session-tombstones', {}).then((res) => {
+      if (!res.ok) return
+      setCleanup({ pending: Array.isArray(res.pending) ? res.pending : [], ledger: res.ledger ?? '' })
+    })
+  }
+  useEffect(() => { refreshCleanup() }, [])
+
+  /** 重试删除：复用 purge（先归档 → detach → 删盘 → 后置校验）。 */
+  const retryCleanup = (sessionId: string): void => {
+    if (cleanupBusy) return
+    setCleanupBusy(true)
+    void callSteward<{ ok: boolean; pendingCleanup?: string[]; failures?: { reason: string }[] }>(
+      'session-history-purge', { sessionIds: [sessionId] },
+    ).then((res) => {
+      setCleanupBusy(false)
+      const residual = res.pendingCleanup ?? []
+      const reason = res.failures?.[0]?.reason
+      const message = res.ok !== true
+        ? translate(t, 'manage.done.error', { error: res.error ?? '?' })
+        : residual.length > 0
+          ? translate(t, 'manage.done.pending', { n: residual.length })
+          : `${translate(t, 'manage.done.purge', { n: 1 })}${reason === undefined ? '' : ` · ${reason}`}`
+      setBatch({ busy: false, message, ok: res.ok !== false })
+      refreshCleanup()
+      setSessions(null)
+    })
+  }
+
+  /** 撤销墓碑（仅实体已无时允许；host 侧会再做一次校验）。 */
+  const forgetCleanup = (sessionId: string): void => {
+    if (cleanupBusy) return
+    setCleanupBusy(true)
+    void callSteward<{ ok: boolean; forgotten?: number }>('session-tombstone-forget', { sessionIds: [sessionId] }).then((res) => {
+      setCleanupBusy(false)
+      setBatch({
+        busy: false,
+        message: res.ok ? translate(t, 'manage.cleanup.forgot', { n: res.forgotten ?? 1 }) : translate(t, 'manage.done.error', { error: res.error ?? '?' }),
+        ok: res.ok,
+      })
+      refreshCleanup()
+    })
+  }
+
+  /** 一键复制确定性清理命令（剪贴板不可用时静默）。 */
+  const copyCleanupCommands = (): void => {
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+    if (clipboard === undefined) return
+    void clipboard.writeText(CLEANUP_COMMANDS).then(() => {
+      setCopied(true)
+      setTimeout(() => { setCopied(false) }, 1500)
+    }).catch(() => { /* 剪贴板被拒：不阻断面板 */ })
   }
 
   // 标题分帧流句柄：重取/卸载时必须 abort（否则宿主会接着把日志读完）。
@@ -262,6 +348,9 @@ export function ManageConsole({ t, open, deferOpen = false }: {
     return translate(t, 'panel.untitled')
   }
 
+  /** 清理区当前待处理条目（为空时只显示命令块）。 */
+  const cleanupRows = cleanup?.pending ?? []
+
   /** 批量动作;删除两步确认。 */
   const runBatch = (kind: 'archive' | 'unarchive' | 'purge'): void => {
     const ids = [...selected]
@@ -309,6 +398,8 @@ export function ManageConsole({ t, open, deferOpen = false }: {
         titleStream.current?.abort()
         titleStream.current = null
         setSessions(null)
+        // 删除/归档都可能改变墓碑区（pending-cleanup 或已清干净）。
+        refreshCleanup()
       }
     })
   }
@@ -518,6 +609,43 @@ export function ManageConsole({ t, open, deferOpen = false }: {
         ])))]),
       ])),
     ),
+    // 清理区：待清理（没删干净）+ 确定性脚本命令（可一键复制）。
+    createElement('section', { key: 'cleanup', className: 'dmss_cleanup' }, [
+      createElement('div', { key: 'head', className: 'dmss_cleanupHead' }, [
+        createElement('span', { key: 'title', className: 'dmss_cleanupTitle' }, translate(t, 'manage.cleanup.title')),
+        cleanupRows.length > 0
+          ? createElement('span', { key: 'count', className: 'dmss_tagArch' }, translate(t, 'manage.cleanup.pending', { n: cleanupRows.length }))
+          : createElement('span', { key: 'count', className: 'dmss_tag' }, translate(t, 'manage.cleanup.empty')),
+        createElement('button', {
+          key: 'copy', type: 'button', className: 'dmss_actBtn',
+          title: CLEANUP_COMMANDS, onClick: copyCleanupCommands,
+        }, translate(t, copied ? 'manage.cleanup.copied' : 'manage.cleanup.copy')),
+      ]),
+      ...cleanupRows.map(row => createElement('div', { key: row.sessionId, className: 'dmss_cleanupRow' }, [
+        createElement('span', { key: 'id', className: 'dmss_cleanupId', title: row.sessionId }, row.sessionId.length > 30 ? `${row.sessionId.slice(0, 30)}…` : row.sessionId),
+        createElement('span', { key: 'state', className: 'dmss_tagArch' }, row.entityExists ? row.state : 'stale'),
+        createElement('span', {
+          key: 'reason',
+          className: 'dmss_cleanupReason',
+          title: row.reason !== '' ? row.reason : row.cwd,
+        }, row.reason !== '' ? row.reason : (row.cwd !== '' ? row.cwd : '—')),
+        createElement('button', {
+          key: 'retry', type: 'button', className: 'dmss_actBtn', disabled: cleanupBusy,
+          onClick: () => { retryCleanup(row.sessionId) },
+        }, translate(t, 'manage.cleanup.retry')),
+        ...(row.entityExists
+          ? []
+          : [createElement('button', {
+            key: 'forget', type: 'button', className: 'dmss_actBtn dmss_btnDanger', disabled: cleanupBusy,
+            onClick: () => { forgetCleanup(row.sessionId) },
+          }, translate(t, 'manage.cleanup.forget'))]),
+      ])),
+      createElement('div', { key: 'scriptHead', className: 'dmss_cleanupHint' }, translate(t, 'manage.cleanup.script')),
+      createElement('pre', { key: 'script', className: 'dmss_cmd' }, CLEANUP_COMMANDS),
+      ...(cleanup === null || cleanup.ledger === ''
+        ? []
+        : [createElement('div', { key: 'ledger', className: 'dmss_cleanupHint' }, cleanup.ledger)]),
+    ]),
   ]
 
   if (selected.size > 0) {

@@ -240,3 +240,44 @@ describe('冷复用探针', () => {
     expect(catalog.items).toEqual([])
   })
 })
+
+describe('清理区 API（session-tombstones / session-tombstone-forget）', () => {
+  it('只返回没删干净的；实体已无可 forget，实体仍在则拒绝', async () => {
+    const home = tempHome()
+    const file = tombstonePathFor(home)
+    mkdirSync(join(home, 'sessions', '--w--', 'session-kept'), { recursive: true })
+    writeFileSync(join(home, 'sessions', '--w--', 'session-kept', 'session.v4.jsonl.zstd'), 'x')
+    appendTombstoneRecords([
+      { sessionId: 'session-gone', retiredAt: new Date().toISOString(), source: 'test', state: 'deleted', createdAt: 1, cwd: 'X' },
+      { sessionId: 'session-kept', retiredAt: new Date().toISOString(), source: 'test', state: 'pending-cleanup', reason: '目录仍在', createdAt: 2, cwd: 'X' },
+    ], { dir: home })
+    const runtime = baseRuntime({
+      registry: () => ({ archivedSessionIds: [] }),
+      sessionQuery: () => ({ listSessions: async () => [] }),
+      titles: undefined,
+      tombstones: latestTombstones(file),
+    }, home)
+
+    const listed = await handleMethod('session-tombstones', {}, runtime) as {
+      pending: { sessionId: string; entityExists: boolean }[]
+      total: number
+    }
+    expect(listed.pending.map(row => row.sessionId)).toEqual(['session-kept'])
+    expect(listed.pending[0]?.entityExists).toBe(true)
+    expect(listed.total).toBe(2)
+
+    const refused = await handleMethod('session-tombstone-forget', { sessionIds: ['session-kept'] }, runtime) as {
+      ok: boolean
+      error?: string
+    }
+    expect(refused.ok).toBe(false)
+    expect(refused.error).toContain('仍有磁盘实体')
+
+    const done = await handleMethod('session-tombstone-forget', { sessionIds: ['session-gone'] }, runtime) as {
+      ok: boolean
+      forgotten?: number
+    }
+    expect(done).toEqual({ ok: true, forgotten: 1 })
+    expect(latestTombstones(file).has('session-gone')).toBe(false)
+  })
+})

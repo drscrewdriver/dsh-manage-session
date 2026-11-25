@@ -1,5 +1,14 @@
 # Changelog / 变更日志
 
+## 2.0.17
+
+**管理台新增「清理区」：待清理可见、可处置，删除命令在界面里就能拿到。**
+
+- 面板底部新增「清理区」：`session-tombstones` 只拉**没删干净的**（`pending-cleanup` / 墓碑失效），逐行显示 uuid / 原因 / 状态。
+- 行内两个动作：**重试删除**（复用 purge：先归档 → detach → 删盘 → 后置校验）与**撤销墓碑**（仅实体已无时出现；host 侧会再校验一次）。
+- 命令可复制：一键拷贝 `list / trash / compact / tombstones / ledger` 五条确定性清理命令（提示先完全退出 DSH、在 profile 目录执行），台账路径也直接展示。
+- 新方法：`session-tombstones`（只读）与 `session-tombstone-forget`（写，实体仍在则拒绝），随 `historyFiles` 子域开关控制。
+
 ## 2.0.16
 
 **README 单一源重构（10 语言）+ 工作区搜索前缀 + archive 关键词兜底。**

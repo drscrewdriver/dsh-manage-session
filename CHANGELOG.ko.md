@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.17
+
+**관리 화면에 "정리 영역" 추가: 덜 지운 항목을 보여 주고 바로 처리하며, 삭제 명령도 복사할 수 있습니다.**
+
+- 패널 하단에 "정리 영역": `session-tombstones`는 **삭제가 덜 된 항목**(`pending-cleanup` / 무효 묘비)만 반환하고 uuid·이유·상태를 행으로 보여 줍니다.
+- 행 동작: **다시 삭제**(purge 재사용: 보관 → detach → 삭제 → 사후 검증)와 **묘비 철회**(실체가 없을 때만 표시, host에서 재검증).
+- 명령 복사: `list / trash / compact / tombstones / ledger` 다섯 줄을 한 번에 복사(DSH 종료 후 profile에서 실행하라고 안내). 대장 경로도 표시합니다.
+- 신규 메서드: `session-tombstones`(읽기 전용), `session-tombstone-forget`(쓰기, 실체가 남아 있으면 거부). `historyFiles` 스위치 아래에서 동작합니다.
+
 ## 2.0.16
 
 **README 단일 소스 생성(10개 언어) + 작업공간 검색 접두사 + archive 키워드 보강.**

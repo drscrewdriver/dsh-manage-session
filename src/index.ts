@@ -299,6 +299,8 @@ export const HISTORY_METHODS = [
   'session-history-purge',
   'session-history-favorites-list',
   'session-history-favorite-set',
+  'session-tombstones',
+  'session-tombstone-forget',
 ] as const
 export const HEALTH_METHODS = [
   'session-health-status',
@@ -921,6 +923,53 @@ export async function handleMethod(
     if (sessionId === undefined) return { ok: false, error: '缺少合法的 sessionId' }
     if (typeof request.favorite !== 'boolean') return { ok: false, error: '缺少 favorite 布尔值' }
     return setFavoriteState(sessionId, request.favorite, favoritesPathsFor(runtime.dshHome))
+  }
+
+  if (method === 'session-tombstones') {
+    // 面板「清理区」的数据源：**只返回待处理的**（pending-cleanup / 墓碑失效），
+    // 已删干净的 deleted 只是隐藏凭证，不该占用户的注意力。
+    const tombstones = runtime.tombstones ?? new Map<string, RetiredTombstone>()
+    const ids = [...tombstones.keys()]
+    const usage = locateSessionUsage(ids, runtime.dshHome)
+    const pending: {
+      sessionId: string
+      state: string
+      reason: string
+      retiredAt: string
+      cwd: string
+      entityExists: boolean
+    }[] = []
+    for (const [id, record] of tombstones) {
+      const entry = usage.get(id)
+      const remains = entry !== undefined && (entry.dir !== undefined || entry.cacheFile !== undefined)
+      if (record.state !== 'pending-cleanup' && !remains) continue
+      pending.push({
+        sessionId: id,
+        state: record.state ?? 'deleted',
+        reason: record.reason ?? '',
+        retiredAt: record.retiredAt ?? '',
+        cwd: record.cwd ?? '',
+        entityExists: remains,
+      })
+    }
+    return { ok: true, ledger: runtime.tombstoneFile ?? '', total: tombstones.size, pending }
+  }
+  if (method === 'session-tombstone-forget') {
+    const request = (payload ?? {}) as { sessionIds?: unknown }
+    const ids = validSessionIds(request.sessionIds)
+    if (ids === undefined) return { ok: false, error: '缺少 sessionIds 数组' }
+    const usage = locateSessionUsage(ids, runtime.dshHome)
+    const blocked = ids.filter((id) => {
+      const entry = usage.get(id)
+      return entry !== undefined && (entry.dir !== undefined || entry.cacheFile !== undefined)
+    })
+    if (blocked.length > 0) {
+      return { ok: false, error: `这些会话仍有磁盘实体，请先删除（回收站）：${blocked.join(', ')}` }
+    }
+    for (const id of ids) runtime.tombstones?.delete(id)
+    const file = runtime.tombstoneFile
+    if (file !== undefined && file !== '') dropTombstones(file, ids)
+    return { ok: true, forgotten: ids.length }
   }
 
   if (method === 'session-health-status') {
