@@ -16,7 +16,7 @@
 
 > Plugin DeepSeek Harness (DSH) mantenido por la comunidad, no es un producto oficial de DeepSeek AI.
 
-Este documento describe **2.0.18**. Cambios publicados en el [registro](CHANGELOG.md).
+Este documento describe **2.0.19**. Cambios publicados en el [registro](CHANGELOG.md).
 
 ## Funcionalidad
 

@@ -22,14 +22,38 @@ export interface CleanupRow {
   entityExists: boolean
 }
 
-/** 确定性清理命令（页签内可一键复制；需先完全退出 DSH，再在 profile 目录执行）。 */
-export const CLEANUP_COMMANDS = [
-  'node node_modules/dsh-manage-session/scripts/session-purge.mjs list',
-  'node node_modules/dsh-manage-session/scripts/session-purge.mjs trash --class empty-session --archive-first',
-  'node node_modules/dsh-manage-session/scripts/session-purge.mjs compact --older-than 7 --window week',
-  'node node_modules/dsh-manage-session/scripts/session-purge.mjs tombstones',
-  'node node_modules/dsh-manage-session/scripts/session-purge.mjs ledger',
-].join('\n')
+/**
+ * 确定性清理命令表：每条命令必须带「作用分类 + 一句话说明」，
+ * 否则用户分不清哪些是查看、哪些会真的改文件（用户反馈 2026-11-25）。
+ *
+ * - `read`：只读，不改任何文件；
+ * - `write`：写入但可还原（搬回收站 / 压缩归档 / 还原）；
+ * - `destroy`：不可恢复（永久销毁批次，需 --yes）。
+ */
+export interface CleanupCommand {
+  cmd: string
+  kind: 'read' | 'write' | 'destroy'
+  /** 说明文案键（manage-locales）。 */
+  descKey: 'manage.cleanup.cmd.list' | 'manage.cleanup.cmd.tombstones' | 'manage.cleanup.cmd.ledger'
+    | 'manage.cleanup.cmd.trash' | 'manage.cleanup.cmd.compact' | 'manage.cleanup.cmd.restore'
+    | 'manage.cleanup.cmd.destroy'
+}
+
+const SCRIPT = 'node node_modules/dsh-manage-session/scripts/session-purge.mjs'
+
+/** 命令清单（面板逐条展示；复制全部 = 按此顺序拼接）。 */
+export const CLEANUP_COMMANDS: readonly CleanupCommand[] = [
+  { cmd: `${SCRIPT} list`, kind: 'read', descKey: 'manage.cleanup.cmd.list' },
+  { cmd: `${SCRIPT} tombstones`, kind: 'read', descKey: 'manage.cleanup.cmd.tombstones' },
+  { cmd: `${SCRIPT} ledger`, kind: 'read', descKey: 'manage.cleanup.cmd.ledger' },
+  { cmd: `${SCRIPT} trash --class empty-session --archive-first`, kind: 'write', descKey: 'manage.cleanup.cmd.trash' },
+  { cmd: `${SCRIPT} compact --older-than 7 --window week`, kind: 'write', descKey: 'manage.cleanup.cmd.compact' },
+  { cmd: `${SCRIPT} restore --archive <period> [--ids <id,...>]`, kind: 'write', descKey: 'manage.cleanup.cmd.restore' },
+  { cmd: `${SCRIPT} purge --batch <batch> --yes`, kind: 'destroy', descKey: 'manage.cleanup.cmd.destroy' },
+]
+
+/** 复制全部时的纯文本（顺序与面板一致）。 */
+export const CLEANUP_COMMANDS_TEXT = CLEANUP_COMMANDS.map(row => row.cmd).join('\n')
 
 const STYLE_ID = 'dmsc-cleanup-style'
 const CLEANUP_CSS = `
@@ -46,6 +70,14 @@ const CLEANUP_CSS = `
 .dmsc_id{flex:none;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dsw-alias-label-secondary)}
 .dmsc_reason{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .dmsc_cmd{margin:8px 0 0;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.08));color:var(--dsw-alias-label-secondary);font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:17px;white-space:pre;overflow:auto;max-height:150px}
+.dmsc_cmdRow{margin-top:8px;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}
+.dmsc_cmdLine{display:flex;align-items:center;gap:8px;min-width:0}
+.dmsc_kind{flex:none;font-size:10px;line-height:16px;border:1px solid currentColor;border-radius:999px;padding:0 6px;white-space:nowrap}
+.dmsc_kindRead{color:var(--dsw-alias-label-caption)}
+.dmsc_kindWrite{color:var(--dsw-alias-state-business-primary,var(--dsw-alias-label-secondary))}
+.dmsc_kindDestroy{color:var(--dsw-alias-state-error-primary)}
+.dmsc_cmdText{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dmsc_cmdDesc{margin-top:4px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
 .dmsc_hint{margin-top:8px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;word-break:break-all}
 .dmsc_msg{margin-top:8px;font-size:12px;line-height:18px}
 .dmsc_ok{color:var(--dsw-alias-label-secondary)}
@@ -73,6 +105,7 @@ export function CleanupPanel(): ReactElement {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copiedCmd, setCopiedCmd] = useState('')
   useCleanupStyles()
 
   /** 只读拉一次：host 只返回没删干净的条目。 */
@@ -121,13 +154,23 @@ export function CleanupPanel(): ReactElement {
     })
   }
 
-  /** 一键复制命令（剪贴板被拒时静默）。 */
+  /** 一键复制全部命令（剪贴板被拒时静默）。 */
   const copy = (): void => {
     const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
     if (clipboard === undefined) return
-    void clipboard.writeText(CLEANUP_COMMANDS).then(() => {
+    void clipboard.writeText(CLEANUP_COMMANDS_TEXT).then(() => {
       setCopied(true)
       setTimeout(() => { setCopied(false) }, 1500)
+    }).catch(() => { /* 不阻断面板 */ })
+  }
+
+  /** 复制单条命令（便于只跑查看类命令）。 */
+  const copyOne = (cmd: string): void => {
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+    if (clipboard === undefined) return
+    void clipboard.writeText(cmd).then(() => {
+      setCopiedCmd(cmd)
+      setTimeout(() => { setCopiedCmd('') }, 1500)
     }).catch(() => { /* 不阻断面板 */ })
   }
 
@@ -139,7 +182,7 @@ export function CleanupPanel(): ReactElement {
         ? createElement('span', { key: 'count', className: 'dmsc_tagPend' }, translate(undefined, 'manage.cleanup.pending', { n: list.length }))
         : createElement('span', { key: 'count', className: 'dmsc_tag' }, translate(undefined, 'manage.cleanup.empty')),
       createElement('button', {
-        key: 'copy', type: 'button', className: 'dmsc_btn', title: CLEANUP_COMMANDS, onClick: copy,
+        key: 'copy', type: 'button', className: 'dmsc_btn', title: CLEANUP_COMMANDS_TEXT, onClick: copy,
       }, translate(undefined, copied ? 'manage.cleanup.copied' : 'manage.cleanup.copy')),
     ]),
     ...(message === null
@@ -164,7 +207,23 @@ export function CleanupPanel(): ReactElement {
         }, translate(undefined, 'manage.cleanup.forget'))]),
     ])),
     createElement('div', { key: 'scriptHead', className: 'dmsc_hint' }, translate(undefined, 'manage.cleanup.script')),
-    createElement('pre', { key: 'script', className: 'dmsc_cmd' }, CLEANUP_COMMANDS),
+    createElement('div', { key: 'scriptHint', className: 'dmsc_hint', style: { marginTop: '4px' } }, translate(undefined, 'manage.cleanup.commandsHint')),
+    // 逐条命令：分类徽标（只读 / 写入·可还原 / 破坏性）+ 命令 + 说明 + 单条复制。
+    ...CLEANUP_COMMANDS.map(row => createElement('div', { key: row.cmd, className: 'dmsc_cmdRow' }, [
+      createElement('div', { key: 'line', className: 'dmsc_cmdLine' }, [
+        createElement('span', {
+          key: 'kind',
+          className: `dmsc_kind ${row.kind === 'read' ? 'dmsc_kindRead' : row.kind === 'write' ? 'dmsc_kindWrite' : 'dmsc_kindDestroy'}`,
+        }, translate(undefined, row.kind === 'read'
+          ? 'manage.cleanup.kind.read'
+          : row.kind === 'write' ? 'manage.cleanup.kind.write' : 'manage.cleanup.kind.destroy')),
+        createElement('code', { key: 'cmd', className: 'dmsc_cmdText', title: row.cmd }, row.cmd),
+        createElement('button', {
+          key: 'copyOne', type: 'button', className: 'dmsc_btn', onClick: () => { copyOne(row.cmd) },
+        }, translate(undefined, copiedCmd === row.cmd ? 'manage.cleanup.copied' : 'manage.cleanup.copyOne')),
+      ]),
+      createElement('div', { key: 'desc', className: 'dmsc_cmdDesc' }, translate(undefined, row.descKey)),
+    ])),
     ...(ledger === '' ? [] : [createElement('div', { key: 'ledger', className: 'dmsc_hint' }, ledger)]),
   ])
 }

@@ -1,5 +1,13 @@
 # Registro de mudanças
 
+## 2.0.19
+
+**Tabela de comandos da aba de limpeza: cada linha indica “somente leitura / escrita·restaurável / destrutivo” e traz uma explicação.**
+
+- Nada de um único `pre` com 5 comandos (não dava para saber o que só consulta e o que apaga); agora uma linha por comando: **selo de categoria + comando + descrição + cópia individual**.
+- Categorias: `list` / `tombstones` / `ledger` = **somente leitura**; `trash` / `compact` / `restore` = **escrita·restaurável**; `purge --batch --yes` = **destrutivo** (irreversível).
+- Legenda no topo; “copiar tudo” continua disponível.
+
 ## 2.0.18
 
 **A área de limpeza virou aba: saiu do rodapé do painel para a aba de bastidores ao lado de “Verificação”.**
