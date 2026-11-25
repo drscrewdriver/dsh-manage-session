@@ -17,6 +17,7 @@ import { HealthPanel } from './health-panel.tsx'
 import { ManageConsole } from './manage.tsx'
 import { translate, type LocaleKey } from './locales.ts'
 import type { OpenSessionOutcome } from './host-api.ts'
+import type { ServiceGetter } from './session-actions.ts'
 
 /** 面板字典面。 */
 export type PanelTranslate = (key: LocaleKey, params?: Record<string, unknown>) => string
@@ -44,10 +45,12 @@ export interface StewardPanelProps {
    * `page` = 填满主栏的整页（顶栏工具行入口用，无遮罩 / 无圆角阴影）。
    */
   variant?: 'dialog' | 'page'
+  /** 官方服务 getter（动作层用），缺省 = undefined 降级（按钮不渲染）。 */
+  services?: ServiceGetter
 }
 
 /** 会话管理对话框 / 整页。 */
-export function StewardPanel({ t, healthCheck, historyFiles = true, openSession, onClose, variant = 'dialog' }: StewardPanelProps): ReactElement {
+export function StewardPanel({ t, healthCheck, historyFiles = true, openSession, onClose, variant = 'dialog', services }: StewardPanelProps): ReactElement {
   // 主页面=管理（会话管理台）；体检与清理是后台页签（用户定标：清理放体检旁）。
   const [tab, setTab] = useState<'health' | 'manage' | 'cleanup'>('manage')
 
@@ -97,8 +100,9 @@ export function StewardPanel({ t, healthCheck, historyFiles = true, openSession,
     ? createElement('div', { style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } },
         createElement(ManageConsole, {
           open: openSession ?? (() => ({ ok: false, error: '' })),
-          // 整页形态必须退页后再延一帧导航，否则第一次点击只会把页面关掉。
+          // 整页形态必须退页后再延一帧导航，否则第一次点击只能把页面关掉。
           deferOpen: variant === 'page',
+          services,
         }))
     : tab === 'health'
       ? createElement(HealthPanel, { t, onClose })

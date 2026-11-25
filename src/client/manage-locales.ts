@@ -72,6 +72,22 @@ export const zh = {
   'star.off': "未收藏",
   'domain.active': "活跃",
   'domain.archived': "归档",
+  'row.pin': "已置顶",
+  'row.unpin': "已取消置顶",
+  'row.rename': "已重命名",
+  'row.renameEmpty': "名称不能为空",
+  'row.renameFailed': "重命名失败",
+  'row.fork': "分支",
+  'row.forked': "已创建分支 {id}",
+  'row.forkFailed': "Fork 失败",
+  'row.copyId': "复制 UUID",
+  'row.idCopied': "已复制 UUID",
+  'row.explorer': "资源管理器",
+  'row.git': "Git 工具",
+  'row.pinFailed': "置顶失败",
+  'row.unpinFailed': "取消置顶失败",
+  'row.archivedHint': "归档会话不支持此操作",
+  'row.openFailed': "打开失败",
 }
 
 /** Key union derived from the zh dictionary. */
@@ -142,6 +158,22 @@ export const en: Dict = {
   'star.off': "Not favorited",
   'domain.active': "Active",
   'domain.archived': "Archived",
+  'row.pin': "Pinned",
+  'row.unpin': "Unpinned",
+  'row.rename': "Renamed",
+  'row.renameEmpty': "Name cannot be empty",
+  'row.renameFailed': "Rename failed",
+  'row.fork': "Fork",
+  'row.forked': "Forked: {id}",
+  'row.forkFailed': "Fork failed",
+  'row.copyId': "Copy UUID",
+  'row.idCopied': "UUID copied",
+  'row.explorer': "Explorer",
+  'row.git': "Git tool",
+  'row.pinFailed': "Pin failed",
+  'row.unpinFailed': "Unpin failed",
+  'row.archivedHint': "Archived session: not supported",
+  'row.openFailed': "Open failed",
 }
 
 export const ja: Partial<Dict> = {
@@ -153,6 +185,13 @@ export const ja: Partial<Dict> = {
   'star.off': "未お気に入り",
   'domain.active': "活跃",
   'domain.archived': "归档",
+  'row.pin': "ピン留め済み",
+  'row.unpin': "ピン留め解除",
+  'row.rename': "名前変更済み",
+  'row.fork': "フォーク",
+  'row.copyId': "UUID コピー",
+  'row.explorer': "エクスプローラー",
+  'row.git': "Git ツール",
 }
 
 export const ko: Partial<Dict> = {
@@ -162,8 +201,15 @@ export const ko: Partial<Dict> = {
   'panel.untitled': "(제목 없음)",
   'star.on': "즐겨찾기됨",
   'star.off': "즐겨찾기 안 됨",
-  'domain.active': "活跃",
-  'domain.archived': "归档",
+  'domain.active': "활성",
+  'domain.archived': "보관됨",
+  'row.pin': "고정됨",
+  'row.unpin': "고정 해제",
+  'row.rename': "이름 변경됨",
+  'row.fork': "포크",
+  'row.copyId': "UUID 복사",
+  'row.explorer': "탐색기",
+  'row.git': "Git 도구",
 }
 
 export const fr: Partial<Dict> = {
@@ -173,8 +219,15 @@ export const fr: Partial<Dict> = {
   'panel.untitled': "(sans titre)",
   'star.on': "En favori",
   'star.off': "Pas en favori",
-  'domain.active': "活跃",
-  'domain.archived': "归档",
+  'domain.active': "Actives",
+  'domain.archived': "Archivees",
+  'row.pin': "Epinglee",
+  'row.unpin': "Decrochee",
+  'row.rename': "Renommee",
+  'row.fork': "Fork",
+  'row.copyId': "Copier UUID",
+  'row.explorer': "Explorateur",
+  'row.git': "Outil Git",
 }
 
 export const de: Partial<Dict> = {
@@ -184,8 +237,15 @@ export const de: Partial<Dict> = {
   'panel.untitled': "(unbenannt)",
   'star.on': "Favorit",
   'star.off': "Kein Favorit",
-  'domain.active': "活跃",
-  'domain.archived': "归档",
+  'domain.active': "Aktive",
+  'domain.archived': "Archiviert",
+  'row.pin': "Angeheftet",
+  'row.unpin': "Nicht angeheftet",
+  'row.rename': "Umbenannt",
+  'row.fork': "Fork",
+  'row.copyId': "UUID kopieren",
+  'row.explorer': "Datei-Explorer",
+  'row.git': "Git-Tool",
 }
 
 export const it: Partial<Dict> = {
@@ -195,8 +255,15 @@ export const it: Partial<Dict> = {
   'panel.untitled': "(senza titolo)",
   'star.on': "Nei preferiti",
   'star.off': "Non nei preferiti",
-  'domain.active': "活跃",
-  'domain.archived': "归档",
+  'domain.active': "Attive",
+  'domain.archived': "Arcoviate",
+  'row.pin': "Fissata",
+  'row.unpin': "Non fissata",
+  'row.rename': "Rinominata",
+  'row.fork': "Fork",
+  'row.copyId': "Copia UUID",
+  'row.explorer': "Esplora risorse",
+  'row.git': "Strumento Git",
 }
 
 export const ru: Partial<Dict> = {
@@ -206,8 +273,15 @@ export const ru: Partial<Dict> = {
   'panel.untitled': "(без названия)",
   'star.on': "В избранном",
   'star.off': "Не в избранном",
-  'domain.active': "活跃",
-  'domain.archived': "归档",
+  'domain.active': "Активные",
+  'domain.archived': "Архивированные",
+  'row.pin': "Закреплено",
+  'row.unpin': "Откреплено",
+  'row.rename': "Переименовано",
+  'row.fork': "Форк",
+  'row.copyId': "Копировать UUID",
+  'row.explorer': "Проводник",
+  'row.git': "Git-инструмент",
 }
 
 export const es: Partial<Dict> = {
@@ -217,8 +291,15 @@ export const es: Partial<Dict> = {
   'panel.untitled': "(sin título)",
   'star.on': "En favoritos",
   'star.off': "No en favoritos",
-  'domain.active': "活跃",
-  'domain.archived': "归档",
+  'domain.active': "Activas",
+  'domain.archived': "Archivadas",
+  'row.pin': "Fijada",
+  'row.unpin': "No fijada",
+  'row.rename': "Renombrada",
+  'row.fork': "Fork",
+  'row.copyId': "Copiar UUID",
+  'row.explorer': "Explorador",
+  'row.git': "Herramienta Git",
 }
 
 export const pt: Partial<Dict> = {
@@ -230,6 +311,13 @@ export const pt: Partial<Dict> = {
   'star.off': "Fora dos favoritos",
   'domain.active': "Ativas",
   'domain.archived': "Arquivadas",
+  'row.pin': "Fixada",
+  'row.unpin': "Desafixada",
+  'row.rename': "Renomeada",
+  'row.fork': "Fork",
+  'row.copyId': "Copiar UUID",
+  'row.explorer': "Explorador",
+  'row.git': "Ferramenta Git",
 }
 
 /** All shipped dictionaries by locale id. */
