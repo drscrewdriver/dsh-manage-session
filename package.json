@@ -1,23 +1,32 @@
 {
   "name": "dsh-manage-session",
-  "version": "2.0.15",
+  "version": "2.0.16",
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
     "tag": "latest",
     "access": "public"
   },
-  "description": "DSH Web 插件：会话管理台 —— 统一管理活跃与归档会话（列表/筛选/收藏/归档与取消归档/批量清理/删除），外加四门会话体检。侧栏入口优先落在顶部工具槽位（插件行之后），宿主无该槽位时回落底栏。不维护索引、不依赖 DRS；搜索能力由 dsh-search-index 提供。（原名 dsh-session-steward，2.0.0 起搜索能力拆回 dsh-search-index）",
+  "description": "会话控制台：统一管理活跃与已归档会话 —— 归档（archive）视图、按工作区搜索、恢复、删除进回收站（可还原）、按周期压缩归档、四门会话体检。Session console for active and archived sessions: archive view, workspace search, restore, recycle-bin delete, periodic .tar.zst compaction and a four-gate health check. 侧栏入口优先落在顶部工具槽位（插件行之后），否则回落底栏；首屏零 I/O 标题源 + 分帧流式补齐。（原名 dsh-session-steward）",
   "keywords": [
     "archive",
+    "archived",
+    "archived-sessions",
+    "cleanup",
     "deepseek-harness",
     "doctor",
     "dsh",
     "dsh-plugin",
+    "favorites",
     "health",
     "manage",
     "manager",
+    "recycle-bin",
+    "restore",
+    "search",
     "session",
-    "sessions"
+    "session-management",
+    "sessions",
+    "workspace"
   ],
   "repository": {
     "type": "git",
@@ -54,11 +63,13 @@
   "scripts": {
     "build": "node -e \"require('fs').rmSync('lib',{recursive:true,force:true})\" && tsc -b && tsdown",
     "prepack": "npm run build",
-    "prepublishOnly": "npm run build && node scripts/check-release.mjs",
+    "prepublishOnly": "npm run build && node scripts/check-release.mjs && npm run readme:check",
+    "readme:gen": "node scripts/gen-readme.mjs",
+    "readme:check": "node scripts/check-readme.mjs",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "session-purge": "node scripts/session-purge.mjs",
-    "test:client": "node tests/client-store.test.mjs && node --import tsx tests/client-locales.test.mjs && node --import tsx tests/client-open-session.test.mjs && node --import tsx tests/client-sse.test.mjs",
+    "test:client": "node tests/client-store.test.mjs && node --import tsx tests/client-locales.test.mjs && node --import tsx tests/client-open-session.test.mjs && node --import tsx tests/client-sse.test.mjs && node --import tsx tests/client-filter.test.mjs",
     "test:release": "node scripts/check-release.mjs"
   },
   "files": [
@@ -72,11 +83,16 @@
     "INSTALL.md",
     "INSTALL.zh.md",
     "LICENSE",
+    "README.de.md",
     "README.en.md",
+    "README.es.md",
+    "README.fr.md",
+    "README.it.md",
     "README.ja.md",
     "README.ko.md",
     "README.pt.md",
     "README.md",
+    "README.ru.md",
     "cordis.patch.yml",
     "dsh.plugin.json",
     "lib",

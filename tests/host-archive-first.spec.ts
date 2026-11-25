@@ -1,16 +1,22 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { handleMethod, type StewardRuntime } from '../src/index.ts'
+import {
+  appendTombstoneRecords,
+  latestTombstones,
+  tombstonePathFor,
+} from '../src/host/history/tombstones.ts'
 
 /**
- * 「删除永远先归档 + 删盘前 detach 活会话 + 进程内墓碑」的契约测试。
+ * 删除链路契约：先归档 → detach 活会话 → 删盘 → **落盘墓碑（deleted / pending-cleanup）**
+ * → catalog 过滤 + 冷复用探针。
  *
- * 背景：活跃会话（开着的 tab / 正在跑回合）会被宿主 `archiveSession` 拒绝；
- * 之前插件把失败吞进 `failures` 里返回 ok，用户看到的是「点了没反应」。
- * 更糟的是删除只动磁盘，宿主内存里的 live 会话仍被 `listSessions()` 列出来，
- * 于是面板留下一条未命名幽灵行，直到宿主重启。
+ * 三条防复发不变量：
+ * 1. 删干净（`deleted`）→ 重启后仍然隐藏（不靠进程内 Set）；
+ * 2. 没删干净（`pending-cleanup`）→ **绝不隐藏**，必须露出来待清理；
+ * 3. 同 id 但 createdAt/cwd 不同 → 判为新会话，撤墓碑放行，并落盘。
  */
 
 const cleanups: string[] = []
@@ -18,18 +24,27 @@ afterEach(() => {
   while (cleanups.length > 0) rmSync(cleanups.pop()!, { recursive: true, force: true })
 })
 
-function baseRuntime(overrides: Partial<StewardRuntime> & { registry: StewardRuntime['registry'] }): StewardRuntime {
+function tempHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'ms-archive-first-'))
   cleanups.push(home)
+  return home
+}
+
+function baseRuntime(overrides: Partial<StewardRuntime>, home: string): StewardRuntime {
   return {
     config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false }),
     dshHome: home,
     projectionStateFor: () => undefined,
     attribute: () => undefined,
     log: () => {},
+    tombstoneFile: tombstonePathFor(home),
     ...overrides,
-    registry: overrides.registry,
+    registry: overrides.registry!,
   }
+}
+
+function header(id: string, createdAt: number, cwd: string) {
+  return { header: { id, version: 1, createdAt, cwd }, live: false, persisted: true }
 }
 
 function activeError(): Error {
@@ -40,6 +55,7 @@ function activeError(): Error {
 
 describe('archive：活跃会话带 stopActivity 重试', () => {
   it('第一次被活跃拒绝 → 第二次带 stopActivity 成功，不再静默失败', async () => {
+    const home = tempHome()
     const calls: { id: string; stopActivity: boolean | undefined }[] = []
     const runtime = baseRuntime({
       registry: () => ({
@@ -49,7 +65,7 @@ describe('archive：活跃会话带 stopActivity 重试', () => {
           if (options?.stopActivity !== true) throw activeError()
         },
       }),
-    })
+    }, home)
 
     const res = await handleMethod('session-history-archive', { sessionIds: ['a'] }, runtime) as {
       ok: boolean
@@ -68,6 +84,7 @@ describe('archive：活跃会话带 stopActivity 重试', () => {
   })
 
   it('非活跃错误不重试，如实进 failures', async () => {
+    const home = tempHome()
     let calls = 0
     const runtime = baseRuntime({
       registry: () => ({
@@ -79,7 +96,7 @@ describe('archive：活跃会话带 stopActivity 重试', () => {
           throw error
         },
       }),
-    })
+    }, home)
     const res = await handleMethod('session-history-archive', { sessionIds: ['a'] }, runtime) as {
       ok: boolean
       failures?: { sessionId: string; reason: string }[]
@@ -89,17 +106,24 @@ describe('archive：活跃会话带 stopActivity 重试', () => {
   })
 })
 
-describe('purge：先归档 → detach 活会话 → 墓碑过滤', () => {
-  it('归档 + detach + 删盘，catalog 立刻不再列出已删会话', async () => {
+describe('purge：先归档 → detach → 删盘 → 墓碑落盘', () => {
+  it('删干净：墓碑记 deleted 并落盘，「重启」（新 runtime 读盘）后仍然隐藏', async () => {
+    const home = tempHome()
     const archived: string[] = []
     const detached: unknown[] = []
-    const deleted: string[] = []
     const live = { id: 'a' }
-    const runtime = baseRuntime({
+    const records = [header('a', 10, 'X')]
+    // 真实布局：workstore 文件优先于 registry 内存集合（删除后归档集合已空）。
+    mkdirSync(join(home, 'storages'), { recursive: true })
+    writeFileSync(join(home, 'storages', 'workspace.json'), `${JSON.stringify({
+      global: { archivedSessionIds: [] },
+      tables: { workspaces: {} },
+    }, null, 2)}\n`)
+    const build = (): StewardRuntime => baseRuntime({
       registry: () => ({
         archivedSessionIds: archived,
         archiveSession: async (id: string) => { archived.push(id) },
-        deleteSession: async (id: string) => { deleted.push(id); return { ok: true } },
+        deleteSession: async () => ({ ok: true }),
       }),
       ctx: {
         get: (name: string) => (name === 'sessions'
@@ -111,14 +135,13 @@ describe('purge：先归档 → detach 活会话 → 墓碑过滤', () => {
           }
           : undefined),
       },
-      sessionQuery: () => ({
-        listSessions: async () => [{ header: { id: 'a', version: 1, createdAt: 1 }, live: true, persisted: true }],
-      }),
+      sessionQuery: () => ({ listSessions: async () => records }),
       titles: undefined,
-      deletedSessions: new Set<string>(),
-    })
+      tombstones: latestTombstones(tombstonePathFor(home)),
+    }, home)
 
-    const before = await handleMethod('session-catalog', {}, runtime) as { ok: boolean; items: { sessionId: string }[] }
+    const runtime = build()
+    const before = await handleMethod('session-catalog', {}, runtime) as { items: { sessionId: string }[] }
     expect(before.items.map(item => item.sessionId)).toEqual(['a'])
 
     const purged = await handleMethod('session-history-purge', { sessionIds: ['a'] }, runtime) as {
@@ -126,18 +149,94 @@ describe('purge：先归档 → detach 活会话 → 墓碑过滤', () => {
       purged?: number
       archivedFirst?: string[]
       detached?: string[]
-      archiveFailures?: unknown
+      pendingCleanup?: string[]
     }
     expect(purged.ok).toBe(true)
     expect(purged.purged).toBe(1)
     expect(purged.archivedFirst).toEqual(['a'])
     expect(purged.detached).toEqual(['a'])
-    expect(purged.archiveFailures).toBeUndefined()
+    expect(purged.pendingCleanup).toBeUndefined()
     expect(archived).toEqual(['a'])
     expect(detached).toEqual(['entry-a'])
-    expect(deleted).toEqual(['a'])
 
-    const after = await handleMethod('session-catalog', {}, runtime) as { ok: boolean; items: { sessionId: string }[] }
+    const tomb = latestTombstones(tombstonePathFor(home)).get('a')
+    expect(tomb?.state).toBe('deleted')
+    expect(tomb?.createdAt).toBe(10)
+    expect(tomb?.cwd).toBe('X')
+
+    // “重启”：进程内状态清空，只靠落盘墓碑数
+    const restarted = build()
+    const after = await handleMethod('session-catalog', {}, restarted) as { items: { sessionId: string }[] }
     expect(after.items).toEqual([])
+  })
+
+  it('没删干净：记 pending-cleanup，且这一行**不隐藏**（留在墓碑区待清理）', async () => {
+    const home = tempHome()
+    mkdirSync(join(home, 'sessions', '--w--', 'session-b'), { recursive: true })
+    writeFileSync(join(home, 'sessions', '--w--', 'session-b', 'session.v4.jsonl.zstd'), 'x')
+    mkdirSync(join(home, 'storages', 'session_projcache', 'sessions'), { recursive: true })
+    writeFileSync(join(home, 'storages', 'session_projcache', 'sessions', 'session-b.json'), '{}')
+
+    const runtime = baseRuntime({
+      // deleteSession 返回 ok 但实际什么都没删 → 后置校验判为“没删干净”。
+      registry: () => ({
+        archivedSessionIds: ['session-b'],
+        archiveSession: async () => {},
+        deleteSession: async () => ({ ok: true }),
+      }),
+      sessionQuery: () => ({ listSessions: async () => [header('session-b', 20, 'W')] }),
+      titles: undefined,
+      tombstones: latestTombstones(tombstonePathFor(home)),
+    }, home)
+
+    const purged = await handleMethod('session-history-purge', { sessionIds: ['session-b'] }, runtime) as {
+      ok: boolean
+      pendingCleanup?: string[]
+    }
+    expect(purged.ok).toBe(true)
+    expect(purged.pendingCleanup).toEqual(['session-b'])
+
+    const tomb = latestTombstones(tombstonePathFor(home)).get('session-b')
+    expect(tomb?.state).toBe('pending-cleanup')
+    expect(tomb?.reason).toContain('仍在')
+
+    const catalog = await handleMethod('session-catalog', {}, runtime) as { items: { sessionId: string }[] }
+    expect(catalog.items.map(item => item.sessionId)).toEqual(['session-b'])
+  })
+})
+
+describe('冷复用探针', () => {
+  it('同 id 但 createdAt/cwd 不同 → 判为新会话，撤墓碑（落盘）并放行', async () => {
+    const home = tempHome()
+    const file = tombstonePathFor(home)
+    appendTombstoneRecords([{
+      sessionId: 'c', retiredAt: new Date().toISOString(), source: 'test',
+      state: 'deleted', createdAt: 1, cwd: 'A',
+    }], { dir: home })
+
+    const runtime = baseRuntime({
+      registry: () => ({ archivedSessionIds: [] }),
+      sessionQuery: () => ({ listSessions: async () => [header('c', 2, 'B')] }),
+      titles: undefined,
+      tombstones: latestTombstones(file),
+    }, home)
+
+    const catalog = await handleMethod('session-catalog', {}, runtime) as { items: { sessionId: string }[] }
+    expect(catalog.items.map(item => item.sessionId)).toEqual(['c'])
+    expect(latestTombstones(file).has('c')).toBe(false)
+  })
+
+  it('身份一致的历史墓碑（老格式无身份）仍然隐藏', async () => {
+    const home = tempHome()
+    const file = tombstonePathFor(home)
+    appendTombstoneRecords([{ sessionId: 'd', retiredAt: new Date().toISOString(), source: 'test', state: 'deleted' }], { dir: home })
+    const runtime = baseRuntime({
+      registry: () => ({ archivedSessionIds: [] }),
+      sessionQuery: () => ({ listSessions: async () => [header('d', 3, 'C')] }),
+      titles: undefined,
+      tombstones: latestTombstones(file),
+    }, home)
+    const catalog = await handleMethod('session-catalog', {}, runtime) as { items: { sessionId: string }[] }
+    expect(catalog.items).toEqual([])
   })
 })

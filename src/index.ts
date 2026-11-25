@@ -21,7 +21,7 @@ import z from '@deepseek-ai/schemastery'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import {
   DEFAULT_CONFIG,
   STEWARD_API_PREFIX,
@@ -33,6 +33,14 @@ import { listFavorites, setFavoriteState } from './host/history/favorites.ts'
 import type { StewardRegistryFace } from './host/history/archive-source.ts'
 import { readArchiveSet } from './host/history/archive-source.ts'
 import { locateSessionUsage, purgeHistory } from './host/history/purge.ts'
+import {
+  appendTombstoneRecords,
+  defaultTombstoneDir,
+  dropTombstones,
+  latestTombstones,
+  tombstonePathFor,
+  type RetiredTombstone,
+} from './host/history/tombstones.ts'
 import {
   bridgeOverlay,
   installLegacySettingsBridge,
@@ -258,11 +266,12 @@ export interface StewardRuntime {
   /** 标题 memo（5 min TTL；可选，缺省表示不缓存）。`apply()` 总是提供实例。 */
   titles?: TitleMemo
   /**
-   * 进程内墓碑：本进程已经物理删掉的会话 id。catalog 必须过滤它们——
-   * 宿主 `sessions.list()` 在 detach 失败/竞态时仍可能把已删会话还回来，
-   * 不过滤就会重新长出「活跃未命名孤儿」。
+   * 持久墓碑（id → 最新记录）：`deleted` 隐藏、`pending-cleanup` 露出待清理。
+   * 进程内删掉的会话靠它跨重启不复发；没删干净的不会被它藏起来。
    */
-  deletedSessions?: Set<string>
+  tombstones?: Map<string, RetiredTombstone>
+  /** 墓碑台账路径（空串/缺省 = 不落盘，单测用）。 */
+  tombstoneFile?: string
   /**
    * 体检结果缓存（进程内，随 fiber 存活）。
    *
@@ -379,6 +388,32 @@ const NO_SERVICE_CTX: CatalogCtxFace = { get: () => undefined }
  * 零 I/O 或单文件读；三级都没命中的进 `pending`，由 `session-catalog-stream`
  * 分帧补齐。这里绝不调用 `readTitleSnapshots`（那是整份日志的代价）。
  */
+/**
+ * 是否被墓碑隐藏（并执行**冷复用探针**）。
+ *
+ * - 墓碑 `deleted` 且身份一致 → 隐藏（进程内/重启后都挡宿主回魂）；
+ * - 墓碑 `pending-cleanup` → **不隐藏**：文件没删干净，必须露出来让用户看到并清理；
+ * - 同 id 但 createdAt/cwd 不同 → 判定为“同 id 新会话”，撤销墓碑（落盘）并放行；
+ * - 老格式墓碑（没有身份字段）无法探测 → 保守隐藏。
+ */
+function hiddenByTombstone(
+  runtime: StewardRuntime,
+  header: { id: string; createdAt?: number; cwd?: string },
+  identityKnown: boolean = header.createdAt !== undefined || header.cwd !== undefined,
+): boolean {
+  const tomb = runtime.tombstones?.get(header.id)
+  if (tomb === undefined) return false
+  if (tomb.state === 'pending-cleanup') return false
+  // 只有“记账里的残留 id、盘上无 header”的情形：没有身份可探测 → 既然墓碑说删干净了，就隐藏。
+  if (!identityKnown) return true
+  if (tomb.createdAt === undefined && tomb.cwd === undefined) return true
+  if (tomb.createdAt === header.createdAt && tomb.cwd === header.cwd) return true
+  runtime.tombstones?.delete(header.id)
+  const file = runtime.tombstoneFile
+  if (file !== undefined && file !== '') dropTombstones(file, [header.id])
+  return false
+}
+
 async function buildCatalog(runtime: StewardRuntime): Promise<{ ok: true; built: CatalogBuild } | { ok: false; error: string }> {
   const sessionQuery = runtime.sessionQuery?.()
   if (sessionQuery === undefined) return { ok: false, error: 'sessionQuery 服务不可用，无法列出会话' }
@@ -387,10 +422,7 @@ async function buildCatalog(runtime: StewardRuntime): Promise<{ ok: true; built:
   try {
     const records = await sessionQuery.listSessions()
     const memo = runtime.titles
-    const deleted = runtime.deletedSessions
-    const visibleRecords = deleted === undefined
-      ? records
-      : records.filter(record => !deleted.has(record.header.id))
+    const visibleRecords = records.filter(record => !hiddenByTombstone(runtime, record.header))
     const catalogRecords: CatalogTitleRecord[] = visibleRecords.map(record => ({ id: record.header.id, header: record.header }))
     // memo 先行短路：命中即零 I/O，也不再进三级解析（批量操作后已被主动失效）。
     const settled = new Map<string, { title: string; source: 'live' | 'cache' | 'pending' | 'none' }>()
@@ -423,7 +455,8 @@ async function buildCatalog(runtime: StewardRuntime): Promise<{ ok: true; built:
     // 否则「归档域筛选」会漏掉真实存在于归档数组里的会话。
     for (const sessionId of archivedIds) {
       if (seen.has(sessionId)) continue
-      if (deleted?.has(sessionId) === true) continue
+      // 记账里的残留 id 同样受墓碑约束（老格式墓碑没有身份，保守隐藏）。
+      if (hiddenByTombstone(runtime, { id: sessionId })) continue
       items.push({ sessionId, title: '', cwd: '', updatedAt: 0, archived: true, titleSource: 'none' })
     }
     const pending = resolved.pending
@@ -787,6 +820,47 @@ export async function handleMethod(
     const detached: string[] = []
     for (const id of ids) if (await forgetLiveSession(runtime, id)) detached.push(id)
 
+    // ②b 先记下删除前的日志身份：墓碑要先带上身份，冷复用探针才能区分
+    //     “同 id 新会话”与宿主 stale 行（拿不到就留空，老格式保守隐藏）。
+    const identities = new Map<string, { createdAt?: number; cwd?: string }>()
+    try {
+      const listed = await runtime.sessionQuery?.()?.listSessions()
+      for (const record of listed ?? []) {
+        identities.set(record.header.id, { createdAt: record.header.createdAt, cwd: record.header.cwd })
+      }
+    } catch { /* 身份拿不到不影响删除 */ }
+
+    /**
+     * 删后置校验：把“真删干净”与“没删干净”分开落墓碑。
+     * - 实体（目录/投影缓存）还在 → `pending-cleanup`（**不隐藏**，必须露出来待清理）；
+     * - 否则 → `deleted`（隐藏，跨重启防宿主回魂）。
+     */
+    const settleTombstones = (): { pendingCleanup: string[] } => {
+      const usage = locateSessionUsage(ids, runtime.dshHome)
+      const pendingCleanup: string[] = []
+      const records: RetiredTombstone[] = []
+      for (const id of ids) {
+        const entry = usage.get(id)
+        const remains = entry !== undefined && (entry.dir !== undefined || entry.cacheFile !== undefined)
+        const identity = identities.get(id) ?? {}
+        const record: RetiredTombstone = remains
+          ? {
+            sessionId: id, retiredAt: '', source: 'purge', state: 'pending-cleanup',
+            reason: '会话目录或投影缓存仍在（宿主占用/权限/跨盘）', ...identity,
+          }
+          : { sessionId: id, retiredAt: '', source: 'purge', state: 'deleted', ...identity }
+        if (remains) pendingCleanup.push(id)
+        records.push(record)
+        runtime.tombstones?.set(id, { ...record, retiredAt: new Date().toISOString() })
+      }
+      // 只写“已配置台账路径”的实例：缺省（单测/未接线）不往真实 home 落盘。
+      const file = runtime.tombstoneFile
+      if (file !== undefined && file !== '') {
+        appendTombstoneRecords(records, { dir: dirname(file), log: runtime.log })
+      }
+      return { pendingCleanup }
+    }
+
     // ③ 内存路径（替换后的 registry 带 deleteSession）优先，文件路径兜底。
     if (typeof mem?.deleteSession === 'function') {
       mem.dshHome = runtime.dshHome
@@ -810,7 +884,7 @@ export async function handleMethod(
       }
       // 实体已删：旧结论（含 `none` 负缓存）一律作废；墓碑让 catalog 立刻不再列出。
       runtime.titles?.invalidate(ids)
-      for (const id of succeeded) runtime.deletedSessions?.add(id)
+      const { pendingCleanup } = settleTombstones()
       return {
         ok: true,
         purged: succeeded.length,
@@ -818,6 +892,7 @@ export async function handleMethod(
         requiresRestart: false,
         archivedFirst: archivedBy,
         detached,
+        ...(pendingCleanup.length === 0 ? {} : { pendingCleanup }),
         ...(failures.length === 0 ? {} : { failures }),
         ...(archiveFailures.length === 0 ? {} : { archiveFailures }),
       }
@@ -826,14 +901,13 @@ export async function handleMethod(
       dshHome: runtime.dshHome,
       searchPaths: storagePathsFor(runtime.dshHome),
     })
-    if (purged.ok) {
-      runtime.titles?.invalidate(ids)
-      for (const id of ids) runtime.deletedSessions?.add(id)
-    }
+    if (purged.ok) runtime.titles?.invalidate(ids)
+    const { pendingCleanup } = settleTombstones()
     return {
       ...purged,
       archivedFirst: archivedBy,
       detached,
+      ...(pendingCleanup.length === 0 ? {} : { pendingCleanup }),
       ...(archiveFailures.length === 0 ? {} : { archiveFailures }),
     }
   }
@@ -1102,8 +1176,9 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
     sessionQuery: () => ctx.get('sessionQuery') as SwitchSessionQuery | undefined,
     // 标题 memo：5 min TTL，批量处置成功后主动失效（见 handleMethod 的写路）。
     titles: new TitleMemo(),
-    // 进程内墓碑：purge 成功的 id 立刻从 catalog 消失（见 buildCatalog）。
-    deletedSessions: new Set<string>(),
+    // 持久墓碑：deleted 隐藏、pending-cleanup 露出；冷复用探针在 catalog 侧执行。
+    tombstones: latestTombstones(tombstonePathFor(defaultTombstoneDir())),
+    tombstoneFile: tombstonePathFor(defaultTombstoneDir()),
   }
 
   // ── dsh-tui 终端面：`/sessions` ────────────────────────────────

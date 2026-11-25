@@ -1,5 +1,16 @@
 # Registro de mudanças
 
+## 2.0.16
+
+**README em fonte única (10 idiomas) + busca por área de trabalho com prefixo + reforço da palavra-chave archive.**
+
+- O README passa a ser gerado de `docs/readme/i18n.mjs` (textos) + `scripts/gen-readme.mjs` (estrutura); `scripts/check-readme.mjs` valida versão, títulos equivalentes, palavra-chave archive, links e a lista `files` (ligado ao `prepublishOnly`).
+- A busca aceita os prefixos `工作区:` / `workspace:` (dois-pontos normal ou largo), comparando apenas o cwd; os demais termos continuam por título/caminho.
+- `description` / `keywords` / `dsh.plugin.json` foram reescritos com archive / arquivadas / lixeira / restore (sem renomear o pacote nem usar pacote alias).
+- **Tombstones persistidas + sonda de reutilização fria**: o resultado da exclusão vai para `~/.dsh-manage-session-index/retired-tombstones.jsonl` (com createdAt/cwd/state). `deleted` fica oculto após reiniciar; mesmo id com identidade diferente é tratado como sessão nova e a tombstone é revogada.
+- **Verificação pós-exclusão**: só o que realmente saiu fica como `deleted`; se diretório/cache permanecerem, vira `pending-cleanup` (**sem ocultar**) e o painel avisa “N não foram apagadas por completo”.
+- **Área de tombstones limpável**: o script ganhou `tombstones` (só exclusões incompletas) e `forget` (apenas entradas sem entidade); `trash` bem-sucedido e `restore` revogam a tombstone correspondente.
+
 ## 2.0.15
 
 **Script determinístico de limpeza (versão lixeira; corrige a linha fantasma “apaguei o arquivo e o uuid ficou”).**

@@ -1,5 +1,16 @@
 # Changelog / 变更日志
 
+## 2.0.16
+
+**README 单一源重构（10 语言）+ 工作区搜索前缀 + archive 关键词兜底。**
+
+- README 改为单一源生成：`docs/readme/i18n.mjs`（文案）+ `scripts/gen-readme.mjs`（骨架）→ `README.md` 与 `README.en/ja/ko/fr/de/it/ru/es/pt.md`；新增 `scripts/check-readme.mjs` 门禁（版本一致、H2 同构、archive 关键词、链接可达、files 白名单），已挂进 `prepublishOnly`。
+- 新增「工作区搜索」前缀：搜索框支持 `工作区:` / `workspace:`（半角/全角冒号均可），只比 cwd；其余输入仍按标题/路径子串。
+- `description` / `keywords` / `dsh.plugin.json` 描述统一改写：显式含 archive / 已归档 / 回收站 / restore 等词，做 dshmarket 与 npm 搜索位兜底（不改包名、不发 alias 包）。
+- **墓碑落盘 + 冷复用探针**：删除结果写进 `~/.dsh-manage-session-index/retired-tombstones.jsonl`（带 createdAt/cwd/state）——`deleted` 跨重启隐藏；同 id 但身份不同→ 判为新会话，自动撤墓碑放行。
+- **删后置校验**：只有“真删干净”才记 `deleted`；目录/缓存仍在则记 `pending-cleanup`，**不隐藏**，在面板提示「N 个没删干净，已留在墓碑区」。
+- **墓碑区可清理**：脚本新增 `tombstones`（只看没删干净的）与 `forget`（只允许实体已无的条目）；`trash` 成功与 `restore` 会自动撤销对应墓碑，避免把真实会话继续隐藏。
+
 ## 2.0.15
 
 **确定性清理脚本（回收站版，修「删了文件仍留 uuid」的幽灵行）。**

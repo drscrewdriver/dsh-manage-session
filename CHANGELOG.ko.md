@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.16
+
+**README 단일 소스 생성(10개 언어) + 작업공간 검색 접두사 + archive 키워드 보강.**
+
+- README는 `docs/readme/i18n.mjs`(문안)와 `scripts/gen-readme.mjs`(골격)에서 생성하며, `scripts/check-readme.mjs`가 버전 일치·제목 동형·archive 키워드·링크·files 화이트리스트를 검사합니다(`prepublishOnly`에 연결).
+- 검색창에서 `工作区:` / `workspace:` 접두사를 지원합니다(반각/전각 콜론). cwd만 비교하고 그 외 입력은 제목/경로 부분 일치로 처리합니다.
+- `description` / `keywords` / `dsh.plugin.json` 문구를 archive·보관·휴지통·restore를 포함하도록 통일했습니다(패키지명 변경이나 alias 패키지는 사용하지 않음).
+- **묘비 영구 저장 + 콜드 재사용 프로브**: 삭제 결과를 `~/.dsh-manage-session-index/retired-tombstones.jsonl`에(createdAt/cwd/state 포함) 기록합니다. `deleted`는 재시작 후에도 숨기고, 같은 id라도 신원이 다르면 새 세션으로 판단해 묘비를 철회합니다.
+- **삭제 후 사후 검증**: 실제로 지운 항목만 `deleted`로 기록하고, 디렉터리/캐시가 남아 있으면 `pending-cleanup`(**숨기지 않음**)으로 두고 패널에 "미완전 삭제 N건"을 표시합니다.
+- **묘비 영역 정리**: 스크립트에 `tombstones`(미완전 삭제만 표시)와 `forget`(실체가 없는 항목만 허용)를 추가했고, `trash` 성공과 `restore`는 해당 묘비를 자동으로 철회합니다.
+
 ## 2.0.15
 
 **결정론적 정리 스크립트(휴지통 버전, "파일은 지웠는데 uuid가 남는" 유령 행 수정).**

@@ -1,139 +1,154 @@
-# dsh-manage-session (Gerenciador de sessões)
+<div align="center">
 
-> **Nome anterior**: `dsh-session-steward` (Mordomo de sessões). Este repositório foi renomeado para
-> `dsh-manage-session` a partir do 2.0.0, e a capacidade de busca/índice foi destacada de volta
-> para [`dsh-search-index`](https://github.com/drscrewdriver/dsh-search-index).
+# dsh-manage-session
 
-Plugin DSH Web: **console unificado de sessões ativas e arquivadas + revisão de saúde em quatro portas**.
+**Console de sessões · arquivo e lixeira — sessões ativas e arquivadas num só lugar**
 
-- **Gestão (página principal)** — lista de sessões **ativas + arquivadas** agrupada por espaço de
-  trabalho: filtro de domínio (todos / ativas / arquivadas), filtro por título, favoritos, e três
-  operações **não equivalentes** em lote após marcar caixas — arquivar, desarquivar, purgar arquivos
-  do arquivo (exclusão real no disco, irreversível). Cada linha traz título, espaço de trabalho e data.
-- **Primeira renderização instantânea** — o `session-catalog` lê apenas fontes de título sem I/O
-  (projeção ao vivo do host / checkpoints do cache de projeção), levando a primeira renderização de
-  ~12 s para menos de um segundo; os títulos restantes chegam do `session-catalog-stream` (SSE)
-  frame a frame, parando no primeiro frame `session/title` (medido 858 MB → 558 KB) e interrompendo
-  a leitura no instante em que o painel fecha.
-- **Revisão de saúde** (aba reserva) — revisão em quatro portas → receita (lista de comandos)
-  → alta (disposições reversíveis + antes/depois).
+[简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Italiano](README.it.md) · [Русский](README.ru.md) · [Español](README.es.md) · **Português**
 
-> Só faz **disposições reversíveis**: não reescreve logs de sessão, não altera dados históricos,
-> não descarta campos em silêncio.
->
-> **Este pacote não contém busca/índice nem depende do DRS**: a recuperação de sessões (título /
-> conteúdo FTS5, localização de acertos) vem do `dsh-search-index`, e a dependência DRS
-> (`dsh-reference-session-collector`) mora lá. O corpus do console de gestão é montado na hora pelo
-> `session-catalog`, a partir do `sessionQuery` do host + o conjunto de arquivamento oficial.
+[![npm](https://img.shields.io/npm/v/dsh-manage-session.svg?label=npm)](https://www.npmjs.com/package/dsh-manage-session)
+[![downloads](https://img.shields.io/npm/dt/dsh-manage-session.svg?label=downloads)](https://www.npmjs.com/package/dsh-manage-session)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![DSH Web plugin](https://img.shields.io/badge/DSH-Web%20plugin-0f766e.svg)](https://github.com/drscrewdriver/dsh-manage-session)
+[![DSH >=0.1.0-rc.2 <0.3.0-0](https://img.shields.io/badge/DSH-%3E%3D0.1.0--rc.2%20%3C0.3.0--0-2563eb.svg)](https://github.com/drscrewdriver/dsh-manage-session)
 
-## Posição da entrada (fileira de ferramentas do topo / queda para o rodapé)
+</div>
 
-| Capacidade do host | Forma da entrada |
-|---|---|
-| A sidebar declara os slots da fileira de ferramentas do topo (linha de painel `sidebar.panellist` + slot de página inteira `main`, a fileira「Complementos / Mais」do 0.1.7+/0.2.x) | A entrada pousa como **linha de painel** logo após a linha「Complementos」e antes do lançador「Mais」(order 6), com ícone em linha e texto alinhado à esquerda por padrão; o clique abre a **página inteira** na coluna principal, e「Fechar」na página retorna à conversa |
-| O host não tem esse slot (linha antiga / layout enxuto) | Cai no `sidebar.footer.action` do **rodapé** da sidebar; o clique abre um diálogo flutuante |
+> Plugin DeepSeek Harness (DSH) mantido pela comunidade, não é um produto oficial da DeepSeek AI.
 
-A decisão é feita na carga (sonda `inject` sobre os dois assentos estarem declarados); se o host
-declarar o slot mais tarde, a entrada do rodapé é retirada ali mesmo e se muda para o topo — nunca
-coexistem duas. Ambos os caminhos são dirigidos pelo interruptor de configurações, e virá-lo tem
-efeito imediato.
+Este documento descreve **2.0.16**. Mudanças publicadas no [histórico](CHANGELOG.md).
 
-## Capturas de tela
+## Funcionalidades
 
-**Forma atual** — a entrada fica na fileira de ferramentas do topo da sidebar (após「Complementos」, antes
-de「Mais」); clicar abre o console de gestão de sessões: cartões de três colunas agrupados por
-espaço de trabalho, filtros de espaço de trabalho e de domínio de recuperação (todos / ativas /
-arquivadas), favoritos, e o lote arquivar · desarquivar · purgar (irreversível, pede segunda
-confirmação) após marcar caixas:
+Guarde as sessões de que não precisa no arquivo e recupere-as a qualquer momento; excluir passa por uma lixeira, nunca por uma remoção irreversível.
 
-![Console de gestão de sessões](assets/new-manager.png)
+- **Vista de sessões arquivadas**: o escopo «Arquivadas» do painel lista todas as sessões arquivadas, agrupadas e contadas por área de trabalho.
+- **Busca por área de trabalho**: chips de área, prefixo `workspace:` e filtro por título/caminho mantêm dezenas de projetos utilizáveis.
+- **Restaurar e excluir**: restaurar = desarquivar (volta à barra lateral); excluir = arquivar → lixeira → remoção do uuid, reversível.
+- **Lixeira e compactação periódica**: `trash` move para `~/.dsh/trash/manage-session/<lote>/`, `compact` funde lotes por dia/semana/mês em `.tar.zst`, `restore` devolve.
+- **Favoritos e ações em lote**: estrela, vista «apenas favoritos», arquivar e excluir em lote (confirmação em duas etapas).
+- **Primeira pintura instantânea + verificação de saúde de quatro portas**: títulos sem I/O e complemento por fluxo de frames (373 ms em 252 sessões); integridade dos logs, cache de projeção, JSON sem perdas, fecho em leitura fria.
 
-**Formas históricas** (só como linha do tempo, não é a interface atual):
+## Capturas
 
-| Época do pacote unificado (1.x: com busca, diálogo de duas abas, aposentado) | Antes (≤0.5.7: entrada no pé da sidebar) |
-|---|---|
-| ![Diálogo antigo de duas abas](assets/old-archive.png) | ![Entrada antiga no pé da sidebar](assets/left-sidebar-old.png) |
+![Console: grupos por área e seleção em lote](assets/new-manager.png)
+
+![Vista de arquivo: sessões arquivadas juntas](assets/old-archive.png)
+
+![Barra lateral antiga: posição da entrada](assets/left-sidebar-old.png)
 
 ## Instalação
 
-```bash
-dsh plugin --profile web add dsh-manage-session
-# ou um tgz local
-dsh plugin --profile web add "file:E:/test/rewrite-agently/mine-dsh-plugins/dsh-manage-session/dsh-manage-session-2.0.0.tgz"
+**Host compatível**: `engines.dsh` é `>=0.1.0-rc.2 <0.3.0-0`; as linhas `0.1.x` e `0.2.x` estão verificadas.
+
+### Deixe um agente instalar (recomendado)
+
+```text
+Instale a versão mais recente do dsh-manage-session no perfil DSH que eu uso, pelo registro npm oficial, confirme a versão e diga como recarregar.
 ```
 
-Após instalar **o processo do host precisa ser reiniciado** (só recarregar a página não basta).
+### Instalação / atualização manual
 
-## Contrato de rotas
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
-Prefixo `/manage-session/api`, nomes de método sempre `session-*`; um método não reconhecido
-retorna um erro explícito, jamais silêncio.
+dsh plugin --profile web add dsh-manage-session@latest --registry=https://registry.npmjs.org/
+```
 
-| Método | O que faz |
-|---|---|
-| `session-catalog` | corpus do console (ativas + arquivadas na mesma tabela; montado na hora de `sessionQuery` + conjunto de arquivamento) |
-| `session-history-list` | lista o conjunto de arquivamento (arquivo de armazenamento primeiro; inclui origem, degradação, volume por linha e `pendingRestart`) |
-| `session-history-archive` | arquivamento em lote (API em memória primeiro, degrada para arquivo) |
-| `session-history-prune` | **desarquivar**: remove ids do array de arquivamento em lote (reversível, exige reiniciar) |
-| `session-history-purge` | **purgar arquivos do arquivo**: apaga de verdade diretório de transcrição + cache de projeção + os dois ids (**irreversível**) |
-| `session-history-favorites-list` / `-favorite-set` | leitura/escrita do conjunto de favoritos (domínio JSON) |
-| `session-health-status` | estado dos interruptores e tabela de métodos (para o painel e a sonda da linha de exclusão, inclui `directDelete`) |
-| `session-health-scan` / `-session` / `-repair` / `-source-migrate` | revisão em lote, relatório por sessão, disposição reversível, migração de assinatura |
+Reinicie o DSH (os plugins do host carregam na inicialização) e atualize a interface para ver a entrada «Gerenciamento de sessões».
 
-## Configurações
+## Configuração
 
-Namespace: `manage-session`.
+Namespace de ajustes `manage-session`:
 
-| Interruptor | Campo | Efeito ao desligar |
-|---|---|---|
-| Ativar o plugin | `enabled` (padrão true) | nenhuma API é registrada e a entrada desaparece por completo |
-| Arquivos de histórico de sessão | `historyFiles` (padrão true) | não registra `session-history-*` |
-| Verificação de saúde | `healthCheck` (padrão true) | não registra `session-health-*` e não renderiza a aba「Verificação de saúde」 |
-| Exclusão em linha | `directDelete` (padrão false) | a linha「Excluir」não aparece no menu de sessão da sidebar (entrada destrutiva desligada por padrão) |
+- `enabled` (`true`) — Chave geral; desligada, o painel e todas as rotas fenced não são registrados
+- `historyFiles` (`true`) — Caminhos de escrita arquivar / desarquivar / excluir (lixeira)
+- `healthCheck` (`true`) — Verificação de saúde de quatro portas e receitas de reparo
+- `directDelete` (`false`) — Mostrar ou não a linha «Excluir» no menu de sessão (desligado por padrão)
 
-## Armazenamento
+**Posição da entrada**: slot de ferramentas no topo da barra lateral quando existe, senão o rodapé.
 
-| Caminho | Conteúdo |
-|---|---|
-| `~/.dsh/storages/manage-session-favorites.json` | conjunto de favoritos (por sessionId) |
-| `~/.dsh/storages/workspace.json` | array de arquivamento e tabela de membros do espaço de trabalho (**arquivo do host**, este plugin faz backup automático antes de escrever) |
+## Uso
 
-## Revisão em quatro portas
+- **Arquivar uma sessão** — Selecione e clique em «Arquivar»; ela sai da barra lateral na hora. Sessões ativas são paradas antes.
+- **Restaurar uma sessão** — Selecione em «Arquivadas» e clique em «Desarquivar»; volta para a sua área.
+- **Excluir uma sessão** — Dois cliques em «Excluir»; vai para a lixeira e o uuid sai do registro na hora.
+- **Buscar uma área** — Clique num chip ou digite `workspace:palavra` na busca.
+- **Favoritos** — Clique na estrela; ative «apenas favoritos» no menu de visualização.
 
-| porta | critério | nível |
-|---|---|---|
-| `log-integrity` | varredura multi-frame zstd → expande provenance → desempacota linhas empacotadas; seq contínuo, sem quadro rasgado no fim | problema de leitura `fail`; só quadro rasgado no fim `warn` |
-| `projection-cache` | defasagem (`lag`) entre o `minSeq` de `~/.dsh/storages/session_projcache/sessions/<id>.json` e o último seq do log + campos não liquidados | defasado e não liquidado `fail`; qualquer um `warn` |
-| `lossless-json` | JSON sem perdas linha a linha via `sessionProjections.checkpoint(session)` no estado quente | acerto `fail`, com key da projeção → pacote de atribuição |
-| `cold-read` | motivo do último `turn/end`, existe open step sem fecho | open step `fail`; interrupted/sem turn/end `warn` |
+## Arquivo, exclusão e limpeza (script determinístico)
 
-A **receita** só propõe três coisas reversíveis: ① isolar registros corrompidos do cache de projeção
-(backup antes) ② havendo step não liquidado, aguardar o host liquidar ③ emitir a lista de comandos
-executáveis. **Proibido**: reescrever logs de sessão, alterar dados históricos, descartar campos em
-silêncio.
-
-## Desenvolvimento
+Para uma limpeza completa rode o script com o host fechado; ele nunca faz `rm` direto dos dados de sessão:
 
 ```bash
-pnpm install
-pnpm typecheck     # tsc -b --pretty false
-pnpm test          # vitest run (metade do host)
-pnpm test:client   # asserções de registro / dicionários da metade de navegador (exige build antes)
-pnpm build         # tsc -b && tsdown → lib/index.js + lib/client.js
+node node_modules/dsh-manage-session/scripts/session-purge.mjs list
+node node_modules/dsh-manage-session/scripts/session-purge.mjs trash --class empty-session --archive-first
+node node_modules/dsh-manage-session/scripts/session-purge.mjs compact --older-than 7 --window week
+node node_modules/dsh-manage-session/scripts/session-purge.mjs restore --archive <period> [--ids <id,...>]
+node node_modules/dsh-manage-session/scripts/session-purge.mjs ledger
 ```
+
+- `list` classifica só leitura: `orphan-id` (no registro, ausente do disco) / `empty-session` / `untitled-session` / `encoded-id` / `ok`.
+- `trash` move para a lixeira e limpa o registro; `compact --window week` funde lotes por período e esvazia as pastas restauráveis diretamente.
+- `restore --archive <período> [--ids ...]` restaura; `ledger` é o registro append-only de cada limpeza.
+- **Área de lápides**: `tombstones` mostra apenas exclusões incompletas (`pending-cleanup`); `forget` remove as entradas sem entidade.
+
+## Armazenamento e rotas
+
+Arquivos do host são copiados antes de qualquer escrita; sem índice próprio de sessões, a busca vem do `dsh-search-index`.
+
+- `~/.dsh/storages/workspace.json` — Conjunto arquivado e pertencimento a áreas (arquivo do host)
+- `~/.dsh/storages/manage-session/purge-ledger.jsonl` — Registro de limpeza (append-only, um uuid por linha)
+- `~/.dsh/trash/manage-session/` — Lixeira: pastas de lote + `archive/*.tar.zst`
+
+```text
+session-catalog            session-catalog-stream
+session-history-list       session-history-archive
+session-history-prune      session-history-purge
+session-history-favorites-list / session-history-favorite-set
+
+session-health-status      session-health-scan
+session-health-session     session-health-repair
+session-health-source-migrate
+
+settings-describe          settings-mutate
+```
+
+## Avisos
+
+- A exclusão continua definitiva: a lixeira restaura tudo, mas após `compact` restaura-se do `.tar.zst`; destruir um lote exige `--yes`.
+- «Sem título» não é resíduo de exclusão: sessões sem mensagens e sessões com id codificado `im:` simplesmente não têm título.
+- Com um processo do host ativo o script recusa `trash/compact/restore` (`--allow-running` força).
+
+## Perguntas frequentes
+
+### Sem entrada após instalar?
+
+Reinicie o DSH; confirme o perfil em uso e que o `cordis.patch.yml` não desativa `dsh-manage-session`.
+
+### Arquivar ou excluir?
+
+Arquivar apenas guarda e pode ser desfeito; excluir passa pela lixeira, limpa o registro e continua restaurável a partir do arquivo.
+
+### Convivência com outros plugins de arquivo?
+
+Sim. O conjunto arquivado é estado compartilhado do host: ambos leem os mesmos dados com entradas separadas.
 
 ## Licença
 
-MIT
+Distribuído sob a [MIT License](LICENSE).
 
-## Face TUI (dsh-tui)
+<details>
+<summary>Build from source</summary>
 
-O dsh-tui não carrega a metade client do plugin (painéis/cartões/página de configuração) nem alcança RPC própria do plugin; chamada de ferramenta mostra só uma linha de resumo. A face legível e operável por humano que sobra são os comandos de barra do host. Convenção de saída: linha única ≤100 caracteres, ≤40 linhas no total, sem ANSI, alinhamento de dois espaços; escrita é dry-run por padrão, `--yes` executa; `--json` devolve JSON em linha única.
+```powershell
+git clone https://github.com/drscrewdriver/dsh-manage-session.git
+Set-Location .\dsh-manage-session
+pnpm install --frozen-lockfile
+npm run build
+dsh plugin --profile web add .
+```
 
-| Comando | Função |
-|---|---|
-| `/sessions audit` | total de sessões + as 10 mais recentes (`--all` traz 40) |
-| `/sessions archived` | só sessões arquivadas |
-| `/sessions prune` | dry run: estima quantos arquivamentos podem ser limpos (não apaga) |
+</details>
 
-O comando é registrado pelo próprio plugin no host (`ctx.inject(['commands'], …)`): em linhas antigas sem serviço de comandos ele não ativa e não gera erro.

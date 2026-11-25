@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.16
+
+**README を単一ソース生成に再構成（10 言語）＋ワークスペース検索の接頭辞＋ archive キーワードの兵兼。**
+
+- README は `docs/readme/i18n.mjs`（文言）と `scripts/gen-readme.mjs`（骨格）から生成；`scripts/check-readme.mjs` でバージョン一致・見出し同型・archive キーワード・リンク・files ホワイトリストを検査（`prepublishOnly` に接続）。
+- 検索欄で `工作区:` / `workspace:` 接頭辞に対応（半角/全角コロン）。cwd のみを対象とし、それ以外はタイトル/パスの部分一致。
+- `description` / `keywords` / `dsh.plugin.json` を archive・アーカイブ済み・ゴミ箱・restore を含む文言に統一（パッケージ名変更やエイリアスパッケージは行わない）。
+- **墓碑の永続化＋冷再利用プローブ**：削除結果を `~/.dsh-manage-session-index/retired-tombstones.jsonl` に（createdAt/cwd/state 付きで）記録。`deleted` は再起動後も非表示、同 id でも身元が違えば新セッションと判断して墓碑を取り消します。
+- **削除後の後置検証**：本当に削除できたものだけ `deleted`。ディレクトリ/キャッシュが残存する場合は `pending-cleanup`（**非表示にしない**）とし、パネルに「未完全削除 N 件」と表示。
+- **墓碑エリアの清掃**：スクリプトに `tombstones`（未完全削除のみ表示）と `forget`（実体が無いもののみ許可）を追加。`trash` 成功と `restore` は対応する墓碑を自動で取り消します。
+
 ## 2.0.15
 
 **決定的なクリーンアップスクリプト（ゴミ箱版。「ファイルを消したのに uuid が残る」幽霊行の修正）。**

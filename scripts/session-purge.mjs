@@ -19,6 +19,8 @@
  *          一个 `archive/<周期>.tar.zst`，然后把“可直接恢复”的散目录清空
  * restore  可恢复：`--batch <批次>`（未压缩散目录）或 `--archive <周期> [--ids ...]`
  * ledger   回看：打印清理/压缩/恢复台账（append-only，逐条 uuid）
+ * tombstones 墓碑区：只看 `pending-cleanup` / 失效墓碑（没删干净的必须露出来）
+ * forget   撤墓碑：只允许实体已不存在的条目（实体还在必须走 trash）
  * ```
  *
  * 硬约束
@@ -63,7 +65,7 @@ const EMPTY_SESSION_MAX_BYTES = 64 * 1024
 const TITLE_MAX_FRAMES = 32
 
 /** 分类键（清单与 --class 共用）。 */
-const CLASSES = ['orphan-id', 'empty-session', 'untitled-session', 'encoded-id', 'ok']
+const CLASSES = ['pending-cleanup', 'tombstone-stale', 'orphan-id', 'empty-session', 'untitled-session', 'encoded-id', 'ok']
 
 /** ────────────────────────────── 参数解析 ─────────────────────────────── */
 
@@ -114,6 +116,63 @@ const LEDGER_FILE = join(TOOL_DIR, 'purge-ledger.jsonl')
 const TRASH_ROOT = join(DSH_HOME, 'trash', 'manage-session')
 /** 二级压缩归档（`.tar.zst`）。 */
 const TRASH_ARCHIVE_DIR = join(TRASH_ROOT, 'archive')
+/** 墓碑台账（与宿主插件同源）：`~/.dsh-manage-session-index/retired-tombstones.jsonl`。 */
+const TOMBSTONE_DIR = join(homedir(), '.dsh-manage-session-index')
+const TOMBSTONE_FILE = join(TOMBSTONE_DIR, 'retired-tombstones.jsonl')
+
+/** 墓碑台账路径（`--tombstone-file` 可覆盖，测试/多实例用）。 */
+function tombstonePath() {
+  const override = flag('tombstone-file')
+  return typeof override === 'string' && override !== '' ? resolve(override) : TOMBSTONE_FILE
+}
+
+/**
+ * 读墓碑台账并取每个 id 的最新状态。
+ *
+ * - `deleted`：删干净了（catalog 隐藏，靠它跨重启不复发）；
+ * - `pending-cleanup`：**没删干净**（目录/缓存还在）—— 这一条必须露出来待清理。
+ */
+function readTombstones() {
+  const latest = new Map()
+  const file = tombstonePath()
+  if (!existsSync(file)) return latest
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed === '') continue
+    try {
+      const record = JSON.parse(trimmed)
+      if (typeof record?.sessionId === 'string' && record.sessionId !== '') latest.set(record.sessionId, record)
+    } catch { /* 半行/脏行：跳过 */ }
+  }
+  return latest
+}
+
+/** 原子重写墓碑台账（撤墓碑用）。 */
+function writeTombstones(records) {
+  const file = tombstonePath()
+  mkdirSync(dirname(file), { recursive: true })
+  const text = [...records.values()].map(record => `${JSON.stringify(record)}\n`).join('')
+  const temp = `${file}.tmp`
+  writeFileSync(temp, text)
+  try {
+    renameSync(temp, file)
+    return true
+  } catch {
+    rmSync(temp, { force: true })
+    return false
+  }
+}
+
+/** 从墓碑区摘掉指定 id（还原/重搬成功后调用，避免把真实会话继续藏起来）。 */
+function forgetTombstones(ids) {
+  const wanted = new Set(ids)
+  if (wanted.size === 0) return 0
+  const current = readTombstones()
+  let removed = 0
+  for (const id of wanted) if (current.delete(id)) removed += 1
+  if (removed === 0) return 0
+  return writeTombstones(current) ? removed : 0
+}
 
 /** ─────────────────────────── id ↔ 目录名编码 ─────────────────────────── */
 
@@ -347,6 +406,7 @@ function cacheFileOf(id) {
 function buildPlan() {
   const doc = readWorkspaceDoc(WORKSPACE_FILE)
   const archived = new Set(doc?.global?.archivedSessionIds ?? [])
+  const tombstones = readTombstones()
   const onDisk = indexSessions()
   const items = []
 
@@ -361,13 +421,19 @@ function buildPlan() {
     const hasMessage = text.includes('"user/message"')
       || (bytes > EMPTY_SESSION_MAX_BYTES && text.length > 0)
     const cacheFile = cacheFileOf(id)
+    // 墓碑优先：`pending-cleanup` = 上次没删干净（露出来待清理）；
+    // `deleted` 却有实体 = 墓碑失效（要么重删要么 forget）。
+    const tomb = tombstones.get(id)
     let klass = 'ok'
-    if (entry.encoded) klass = 'encoded-id'
+    if (tomb?.state === 'pending-cleanup') klass = 'pending-cleanup'
+    else if (tomb?.state === 'deleted') klass = 'tombstone-stale'
+    else if (entry.encoded) klass = 'encoded-id'
     else if (title === undefined && !hasMessage) klass = 'empty-session'
     else if (title === undefined) klass = 'untitled-session'
     items.push({
       id,
       class: klass,
+      tombstone: typeof tomb?.state === 'string' ? tomb.state : '',
       archived: archived.has(id),
       cwd: header?.cwd ?? '',
       createdAt: header?.createdAt ?? 0,
@@ -383,9 +449,13 @@ function buildPlan() {
   // 记账里有、磁盘上没有的 id：真正的“幽灵 uuid”（删了文件但记账没清）。
   for (const id of bookkeepingIds(doc)) {
     if (onDisk.has(id)) continue
+    const tomb = tombstones.get(id)
+    // 已删干净（deleted）的幽灵：catalog 已隐藏，清单不再列（不是待清理项）。
+    if (tomb?.state === 'deleted') continue
     items.push({
       id,
-      class: 'orphan-id',
+      class: tomb?.state === 'pending-cleanup' ? 'pending-cleanup' : 'orphan-id',
+      tombstone: typeof tomb?.state === 'string' ? tomb.state : '',
       archived: archived.has(id),
       cwd: '',
       createdAt: 0,
@@ -462,6 +532,11 @@ function printPlan(plan) {
     console.log(`回收站：${batches.length} 批未压缩（${formatBytes(batches.reduce((sum, item) => sum + item.bytes, 0))}），`
       + `${archives.length} 个 .tar.zst（${formatBytes(archives.reduce((sum, item) => sum + item.bytes, 0))}）`)
     for (const batch of batches.slice(-5)) console.log(`  未压缩批次 ${batch.batch}（${formatBytes(batch.bytes)}）`)
+  }
+  const pending = items.filter(item => item.class === 'pending-cleanup' || item.class === 'tombstone-stale')
+  if (pending.length > 0) {
+    console.log(`墓碑区：${pending.length} 条待清理（${pending.map(item => `${item.id}[${item.class}]`).join('、')}）`)
+    console.log('  → 重试 `trash --ids <id>`；确认已无可删实体后 `forget --ids <id>` 撤墓碑')
   }
   console.log('提示：archive（侧栏立即不可见）→ 复核 → 退出 DSH → trash（搬回收站）→ compact（定期压缩）')
 }
@@ -945,6 +1020,8 @@ function runTrash(plan, ids) {
     ...ledger.filter(entry => entry.phase === 'bookkeeping-only').map(entry => entry.id),
   ])
   if (removedIds.size > 0) dropBookkeeping([...removedIds])
+  // 搬走后墓碑也要撤：否则之前“没删干净”的 pending-cleanup 会继续把这条挂在墓碑区。
+  if (removedIds.size > 0) forgetTombstones([...removedIds])
   appendLedger(ledger)
   console.log(`已搬入回收站 ${moved} 条（${formatBytes(bytes)}），记账清理 ${removedIds.size} 条；失败 ${failures.length} 条`)
   if (moved > 0) {
@@ -1166,6 +1243,8 @@ function runRestore() {
     }
   }
   if (restored.length > 0) restoreBookkeeping(restored, cwdById)
+  // 还原回来的会话不能被“已删”墓碑继续隐藏。
+  if (restored.length > 0) forgetTombstones(restored)
   appendLedger(ledger)
   console.log(`已从 ${fromArchive ? archivePath : expandedDir} 还原 ${restored.length} 条（已重新挂入归档集合）`)
   for (const failure of failures) console.log(`  ✗ ${failure.id}: ${failure.reason}`)
@@ -1206,6 +1285,61 @@ function destroyBatch(batch) {
   for (const target of targets) rmSync(target, { recursive: true, force: true })
   appendLedger([{ ts: new Date().toISOString(), phase: 'destroyed', batch, targets }])
   console.log(`已永久销毁批次 ${batch}`)
+}
+
+/** ─────────────────────────────── 墓碑区 ─────────────────────────────── */
+
+/**
+ * 查看墓碑区：`pending-cleanup`（实体还在，必须清理）与 `deleted+实体仍在`（墓碑失效）
+ * 都会被标为待清理；`deleted` 且实体已无的条目只是隐藏凭证，不必操心。
+ */
+function printTombstones() {
+  const tombstones = readTombstones()
+  if (tombstones.size === 0) {
+    console.log(`墓碑区是空的：${tombstonePath()}`)
+    return
+  }
+  const onDisk = indexSessions()
+  const pending = []
+  console.log(`墓碑区 ${tombstones.size} 条（${tombstonePath()}）`)
+  for (const [id, record] of [...tombstones.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const remains = onDisk.has(id)
+    const state = typeof record.state === 'string' ? record.state : 'deleted(legacy)'
+    const needsCleanup = remains || record.state === 'pending-cleanup'
+    if (needsCleanup) pending.push(id)
+    console.log([
+      record.retiredAt === '' || record.retiredAt === undefined ? '—' : record.retiredAt,
+      state,
+      id,
+      remains ? '实体仍在' : '实体已无',
+      record.cwd ?? '—',
+      record.reason ?? '',
+      needsCleanup ? '← 待清理' : '',
+    ].join('\t'))
+  }
+  if (pending.length > 0) {
+    console.log(`待清理 ${pending.length} 条：先 \`trash --ids ${pending[0]}\`；确认实体已无后 \`forget --ids <id>\` 撤墓碑`)
+  }
+}
+
+/**
+ * 撤墓碑：只允许“实体已不存在”的条目。实体还在的必须走 `trash`（否则会把真会话藏起来）。
+ * `--ids` 缺省时撤所有“实体已无”的墓碑。
+ */
+function runForget() {
+  const tombstones = readTombstones()
+  const onDisk = indexSessions()
+  const idsFlag = flag('ids')
+  const wanted = typeof idsFlag === 'string' && idsFlag !== ''
+    ? idsFlag.split(',').map(id => id.trim()).filter(Boolean)
+    : [...tombstones.keys()]
+  const blocked = wanted.filter(id => onDisk.has(id))
+  if (blocked.length > 0) {
+    throw new Error(`这些 id 还有磁盘实体，必须走 trash（回收站）而不是 forget：${blocked.join(', ')}`)
+  }
+  const removed = forgetTombstones(wanted)
+  if (removed === 0) console.log('没有可撤的墓碑')
+  else console.log(`已撤 ${removed} 条墓碑（实体已无）`)
 }
 
 /** ──────────────────────────────── ledger ─────────────────────────────── */
@@ -1265,11 +1399,19 @@ function main() {
     runPurge(plan, selectIds(plan))
     return
   }
+  if (args.command === 'tombstones') {
+    printTombstones()
+    return
+  }
+  if (args.command === 'forget') {
+    runForget()
+    return
+  }
   if (args.command === 'ledger') {
     printLedger()
     return
   }
-  throw new Error(`未知子命令：${args.command}（list / archive / trash / compact / restore / purge / ledger）`)
+  throw new Error(`未知子命令：${args.command}（list / archive / trash / compact / restore / tombstones / forget / purge / ledger）`)
 }
 
 try {

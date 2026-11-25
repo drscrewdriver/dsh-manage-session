@@ -12,6 +12,7 @@
 import { createElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem, type OpenSessionOutcome } from './host-api.ts'
 import { translate, type LocaleKey } from './manage-locales.ts'
+import { matchesCatalogText } from './session-filter.ts'
 
 /** 管理台字典面（search 子域命名空间的键集）。 */
 export type ManageTranslate = (key: LocaleKey, params?: Record<string, unknown>) => string
@@ -227,12 +228,8 @@ export function ManageConsole({ t, open, deferOpen = false }: {
     return { chips: workspaceChips.slice(0, 8), hidden: Math.max(0, workspaceChips.length - 8) }
   }, [workspaceChips, showAllWorkspaces])
 
-  /** 文本过滤:标题/cwd 子串,大小写折叠。 */
-  const matchesText = (item: HostSessionItem): boolean => {
-    const needle = textFilter.trim().toLowerCase()
-    if (needle === '') return true
-    return item.title.toLowerCase().includes(needle) || item.cwd.toLowerCase().includes(needle)
-  }
+  /** 文本过滤：支持 `工作区:` / `workspace:` 前缀（只比 cwd）；其余按标题/cwd 子串。 */
+  const matchesText = (item: HostSessionItem): boolean => matchesCatalogText(item, textFilter)
 
   const toggleCollapsed = (key: string): void => {
     setCollapsedGroups(prev => {
@@ -283,8 +280,10 @@ export function ManageConsole({ t, open, deferOpen = false }: {
       requiresRestart?: boolean
       failures?: { sessionId: string; reason: string }[]
       archiveFailures?: { sessionId: string; reason: string }[]
+      pendingCleanup?: string[]
     }>(method, { sessionIds: ids }).then((res) => {
       const failures = [...(res.failures ?? []), ...(res.archiveFailures ?? [])]
+      const pending = res.pendingCleanup ?? []
       const base = !res.ok
         ? translate(t, 'manage.done.error', { error: res.error ?? '?' })
         : kind === 'archive'
@@ -292,9 +291,12 @@ export function ManageConsole({ t, open, deferOpen = false }: {
           : kind === 'unarchive'
             ? translate(t, 'manage.done.unarchive', { n: res.removed ?? ids.length })
             : translate(t, 'manage.done.purge', { n: res.purged ?? ids.length })
-      // 逐条失败必须可见：只报成功数会让「活跃会话被拒」看起来像没反应。
-      const withFailures = res.ok === true && failures.length > 0
-        ? `${base}${translate(t, 'manage.done.failed', { n: failures.length, reason: failures[0]?.reason ?? '?' })}`
+      // 逐条失败必须可见：只报成功数会让「活跃会话被拒」看起来像没反应；
+      // 没删干净的单独提示（那些行留在墓碑区，脚本 tombstones 可清理/重试）。
+      const withFailures = res.ok === true && (failures.length > 0 || pending.length > 0)
+        ? `${base}`
+          + `${failures.length > 0 ? translate(t, 'manage.done.failed', { n: failures.length, reason: failures[0]?.reason ?? '?' }) : ''}`
+          + `${pending.length > 0 ? translate(t, 'manage.done.pending', { n: pending.length }) : ''}`
         : base
       // 及时性如实呈现:内存路径即时生效;文件降级路径才需要重启。
       const message = res.ok === true && res.requiresRestart === true
