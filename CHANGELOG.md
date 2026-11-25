@@ -1,6 +1,20 @@
 # Changelog / 变更日志
 
-## 2.0.21
+## 2.0.22
+
+**会话管理台单会话动作 + 官方打开能力。**
+
+- 行内新增四个动作按钮（hover/focus 显示，触屏常显）：
+  - **置顶/取消置顶**：调官方 `uiWorkspace.pinSession/unpinSession`，与侧栏同一 `workspaces` 集合；置顶行组内置前（`sortPinnedFirst`）。
+  - **改名**：铅笔图标进入就地输入框，Enter 提交、Esc 取消、空名拒绝；调 `sessions.using(…rename)` 与官方重命名对话框同一条写路径。
+  - **Fork**：调 `uiWorkspace.forkSession`，成功刷新列表并提示子会话 id。
+  - **复制 UUID**：元信息行短 id + 悬浮全 id + 剪贴板复制（`session-` 前缀不丢）。
+- 分组头新增两枚按钮（仅 open-in-app 可用时出现）：
+  - **资源管理器**：调 `POST /open-in-app/open`（Windows explorer / macOS finder / Linux filemanager）。
+  - **Git**：优先 `gitbash`，退 GitHub Desktop/Fork/SourceTree 等。
+- 归档行：置顶/改名/Fork 不可点并悬浮提示。
+- 服务缺席（旧宿主 <0.1.7）：动作按钮不渲染，面板绝不白屏。
+- 新增 `src/client/session-actions.ts`、`src/client/open-in-app.ts` 及对应单测。
 
 **修复：编码名会话（`im:` / `imu:`）删除不彻底——记账清了、目录还在。**
 

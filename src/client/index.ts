@@ -14,6 +14,7 @@
  */
 import type { Context } from 'cordis'
 import { createElement, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react'
+import type { ServiceGetter } from './session-actions.ts'
 import {
   DEFAULT_CONFIG,
   STEWARD_ENTRY_ID,
@@ -226,6 +227,9 @@ export function apply(ctx: Context): void {
     } catch { /* 布局服务缺席：保持现状 */ }
   }
 
+  // services getter：动作层惰性读官方服务，不缓存副本。
+  const services: ServiceGetter = (name: string) => ctx.get(name)
+
   // 管理台行点击打开会话：**先退页 → 下一帧导航**，全程不抛错（失败回原因，面板就地提示）。
   // 导航服务惰性取：应用序早于导航模块。
   const openSession: OpenSessionFn = (
@@ -250,11 +254,11 @@ export function apply(ctx: Context): void {
       const topReady = rowSeat && mainSeat
       if (topReady && topOff === undefined) {
         if (footerOff !== undefined) { const off = footerOff; footerOff = undefined; off() }
-        topOff = mountTopToolEntries(slots, bound, openSession, closeToolPanel)
+        topOff = mountTopToolEntries(slots, bound, openSession, closeToolPanel, services)
         return
       }
       if (!topReady && footerOff === undefined && topOff === undefined) {
-        footerOff = mountFooterEntries(slots, bound, openSession)
+        footerOff = mountFooterEntries(slots, bound, openSession, services)
       }
     }
 
@@ -438,6 +442,7 @@ export function StewardEntry(
   props: StewardFooterProps & {
     scope?: (StewardCardScope & { getSnapshot(): { value: StewardConfig | undefined } }) | undefined
     openSession?: OpenSessionFn
+    services?: ServiceGetter
   },
 ): ReactElement {
   const [open, setOpen] = useState(false)
@@ -467,6 +472,7 @@ export function StewardEntry(
         healthCheck,
         historyFiles: config.historyFiles !== false,
         openSession: props.openSession,
+        services: props.services,
         onClose: () => { setOpen(false) },
       })
       : null,
@@ -560,6 +566,7 @@ function mountFooterEntries(
   slots: StewardSlotsService,
   bound: BridgeScope<StewardConfig>,
   openSession: OpenSessionFn,
+  services: ServiceGetter,
 ): () => void {
   const off = slots.inject('sidebar.footer.action', () => slots.register(
     { name: 'sidebar.footer.action', id: STEWARD_ENTRY_ID, order: 6 },
@@ -567,6 +574,7 @@ function mountFooterEntries(
       ...props,
       scope: bound as unknown as StewardCardScope,
       openSession,
+      services,
     }),
   ), 'dsh-manage-session: sidebar footer entry')
   return composeDisposers([off])
@@ -582,6 +590,7 @@ function mountTopToolEntries(
   bound: BridgeScope<StewardConfig>,
   openSession: OpenSessionFn,
   closePanel: () => void,
+  services: ServiceGetter,
 ): () => void {
   /** 管理页：管理台 / 体检 双页签，页签可见性与底栏入口同源。 */
   const ManagerPage = (): ReactElement => {
@@ -595,6 +604,7 @@ function mountTopToolEntries(
       healthCheck: config.healthCheck !== false,
       historyFiles: config.historyFiles !== false,
       openSession,
+      services,
       onClose: closePanel,
     })
   }

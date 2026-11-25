@@ -9,13 +9,53 @@
  * 动作面:session-history-archive / prune / purge（写官方存储文件,重启后
  * 侧栏完全生效——宿主半在成功路径上已同步联动索引）。
  */
-import { createElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { createElement, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import { callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem, type OpenSessionOutcome } from './host-api.ts'
 import { translate, type LocaleKey } from './manage-locales.ts'
 import { matchesCatalogText } from './session-filter.ts'
+import {
+  readPinnedIds, readArchivedIds, readLiveIds,
+  capabilitiesOf, sortPinnedFirst,
+  togglePin, renameSession, forkSession,
+  type ServiceGetter,
+} from './session-actions.ts'
+import {
+  fetchOpenInApps, pickExplorerApp, pickGitApp, launchOpenInApp,
+} from './open-in-app.ts'
 
 /** 管理台字典面（search 子域命名空间的键集）。 */
 export type ManageTranslate = (key: LocaleKey, params?: Record<string, unknown>) => string
+
+/** 剪贴板失败后的 textarea 内回退。 */
+function fallbackCopy(text: string, onOk: () => void): void {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'; ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+    onOk()
+  } catch { /* 失败不抛 */ }
+}
+
+/** 行内动作小图标按钮通用渲染函数。 */
+function iconBtn(
+  key: string, label: string, svg: React.ReactNode, disabled: boolean, disabledTitle: string,
+  onClick: (e: React.MouseEvent) => void,
+): React.ReactElement {
+  return createElement('button', {
+    key,
+    type: 'button',
+    className: 'dmss_iconBtn',
+    'aria-label': label,
+    title: disabled ? disabledTitle : label,
+    disabled,
+    onClick: (e: React.MouseEvent) => { e.stopPropagation(); onClick(e) },
+    onDoubleClick: (e: React.MouseEvent) => { e.stopPropagation() },
+  }, svg)
+}
 
 /** 样式（幂等注入;类名沿用 dmss_ 前缀,与搜索面板共享视觉语言）。 */
 function injectManageStyles(): () => void {
@@ -68,6 +108,22 @@ function injectManageStyles(): () => void {
 .dmss_status{color:var(--dsw-alias-label-tertiary);padding:10px 8px 8px;font-size:12px;line-height:18px}
 .dmss_empty{color:var(--dsw-alias-label-tertiary);padding:10px 8px 8px;font-size:12px;line-height:18px}
 .dmss_error{color:var(--dsw-alias-state-error-primary);padding:8px;font-size:12px;line-height:18px}
+/* 行内动作区：hover/focus-within 显示；触屏常显。 */
+.dmss_rowActions{display:flex;align-items:center;gap:3px;opacity:0;transition:opacity .12s;margin-top:2px}
+.dmss_row:hover .dmss_rowActions,.dmss_row:focus-within .dmss_rowActions{opacity:1}
+@media (hover:none){.dmss_rowActions{opacity:1}}
+.dmss_iconBtn{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:none;border-radius:5px;background:transparent;cursor:pointer;padding:0;color:var(--dsw-alias-label-tertiary);flex:none}
+.dmss_iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dmss_iconBtn:disabled{cursor:not-allowed;opacity:.4}
+.dmss_uuid{font-size:10px;color:var(--dsw-alias-label-caption);cursor:default;user-select:all}
+/* 分组头右侧按钮 */
+.dmss_groupActions{display:flex;align-items:center;gap:4px;flex:none}
+/* 置顶图钉 */
+.dmss_pinnedIcon{flex:none;color:var(--dsw-alias-state-warn-label,#d97706);font-size:11px;line-height:1}
+/* 就地成功/失败提示 */
+.dmss_toast{display:flex;align-items:center;gap:6px;margin:4px 8px 0;padding:6px 10px;border-radius:8px;font-size:12px;line-height:18px}
+.dmss_toastOk{background:rgba(22,163,74,.10);color:#15803d;border:1px solid rgba(22,163,74,.28)}
+.dmss_toastErr{background:rgba(220,38,38,.10);color:#b91c1c;border:1px solid rgba(220,38,38,.28)}
 `
   document.head.appendChild(tag)
   return () => {
@@ -79,12 +135,14 @@ function injectManageStyles(): () => void {
 let lastOpenError: string | null = null
 
 /** 批量管理台主体（自持语料/勾选/批量状态）。 */
-export function ManageConsole({ t, open, deferOpen = false }: {
+export function ManageConsole({ t, open, deferOpen = false, services }: {
   t?: ManageTranslate
   /** 打开会话：返回结果（失败由本组件就地提示，绝不抛错/白屏）。 */
   open: (sessionId: string, options?: { defer?: boolean; onError?: (message: string) => void }) => OpenSessionOutcome
   /** 整页形态：先退页、下一帧再导航（否则第一次点击只关页）。 */
   deferOpen?: boolean
+  /** 官方服务 getter（缺省 = () => undefined，动作按钮不渲染）。 */
+  services?: ServiceGetter
 }): ReactElement {
   const [sessions, setSessions] = useState<HostSessionItem[] | null>(null)
   const [sessionsError, setSessionsError] = useState<string | null>(null)
@@ -107,6 +165,46 @@ export function ManageConsole({ t, open, deferOpen = false }: {
   const [showAllWorkspaces, setShowAllWorkspaces] = useState(false)
   // 分组收拢:勾选的组键(cwd);定位 chip 选中时该组自动展开。
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set())
+
+  // ── 订阅官方服务的置顶/归档/live 集合 ────────────────────────────────────
+  // services 缺席时返回常量：不订阅，不重渲染
+  const get = services ?? (() => undefined)
+  const pinnedIds = useSyncExternalStore(
+    (cb) => { try { const s = get('workspaces') as { subscribe?: (l: () => void) => () => void } | undefined; return s?.subscribe?.(cb) ?? (() => {}) } catch { return () => {} } },
+    () => readPinnedIds(get),
+  )
+  const archivedIds = useSyncExternalStore(
+    (cb) => { try { const s = get('workspaces') as { subscribe?: (l: () => void) => () => void } | undefined; return s?.subscribe?.(cb) ?? (() => {}) } catch { return () => {} } },
+    () => readArchivedIds(get),
+  )
+  // liveIds：服务缺席时此 store 不运行，缺省 undefined
+  const liveIds = useSyncExternalStore(
+    (cb) => { try { const s = get('sessions') as { subscribe?: (l: () => void) => () => void } | undefined; return s?.subscribe?.(cb) ?? (() => {}) } catch { return () => {} } },
+    () => readLiveIds(get),
+  )
+
+  // ── open-in-app 可用应用集合（挂载取一次） ──────────────────────────────
+  const [openApps, setOpenApps] = useState<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    let cancelled = false
+    void fetchOpenInApps().then((apps) => { if (!cancelled) setOpenApps(apps) })
+    return () => { cancelled = true }
+  }, [])
+  const explorerApp = pickExplorerApp({ apps: [...openApps] })
+  const gitApp = pickGitApp({ apps: [...openApps] })
+
+  // ── 行内改名状态 ──────────────────────────────────────────────────────────
+  const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null)
+
+  // ── 就地提示（成功/失败 3s 自动消失） ────────────────────────────────────
+  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showToast = (text: string, ok: boolean): void => {
+    if (toastTimer.current !== null) clearTimeout(toastTimer.current)
+    setToast({ text, ok })
+    toastTimer.current = setTimeout(() => { setToast(null); toastTimer.current = null }, 3000)
+  }
+  useEffect(() => () => { if (toastTimer.current !== null) clearTimeout(toastTimer.current) }, [])
 
   // 收藏集合:挂载取一次。
   useEffect(() => {
@@ -200,8 +298,8 @@ export function ManageConsole({ t, open, deferOpen = false }: {
     }
     return [...byCwd.entries()]
       .sort((a, b) => (a[0] === '' ? 1 : 0) - (b[0] === '' ? 1 : 0) || a[0].localeCompare(b[0]))
-      .map(([cwd, items]) => ({ cwd, items }))
-  }, [sessions, domain, favoritesOnly, favorites, workspaceFilter])
+      .map(([cwd, items]) => ({ cwd, items: sortPinnedFirst(items, pinnedIds) }))
+  }, [sessions, domain, favoritesOnly, favorites, workspaceFilter, pinnedIds])
 
   /** workspace chip 数据:全部/各 workspace 计数,按计数降序,未分组最后。 */
   const workspaceChips = useMemo<{ cwd: string; label: string; count: number }[]>(() => {
@@ -365,6 +463,63 @@ export function ManageConsole({ t, open, deferOpen = false }: {
     })
   }
 
+  // ── 行内动作处理 ─────────────────────────────────────────────────────────
+
+  const handlePin = (item: HostSessionItem): void => {
+    const isPinned = pinnedIds.has(item.sessionId)
+    void togglePin(get, item.sessionId, !isPinned).then((res) => {
+      if (res.ok) showToast(translate(t, isPinned ? 'row.unpin' : 'row.pin'), true)
+      else showToast(res.error ?? translate(t, 'row.pinFailed'), false)
+    })
+  }
+
+  const handleRename = (item: HostSessionItem, draft: string): void => {
+    void renameSession(get, item.sessionId, draft).then((res) => {
+      if (res.ok) {
+        // 乐观更新本地标题
+        setSessions(prev => prev === null ? prev : prev.map(r =>
+          r.sessionId === item.sessionId ? { ...r, title: draft.trim() } : r))
+        setEditing(null)
+        showToast(translate(t, 'row.rename'), true)
+      } else {
+        showToast(res.error ?? translate(t, 'row.renameFailed'), false)
+      }
+    })
+  }
+
+  const handleFork = (item: HostSessionItem): void => {
+    void forkSession(get, item.sessionId).then((res) => {
+      if (res.ok) {
+        titleStream.current?.abort()
+        titleStream.current = null
+        setSessions(null) // 重取列表
+        showToast(translate(t, 'row.forked', { id: res.childId ?? '' }), true)
+      } else {
+        showToast(res.error ?? translate(t, 'row.forkFailed'), false)
+      }
+    })
+  }
+
+  const handleCopyUUID = (sessionId: string): void => {
+    const doCopy = (): void => {
+      showToast(translate(t, 'row.idCopied'), true)
+    }
+    if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
+      navigator.clipboard.writeText(sessionId).then(doCopy).catch(() => {
+        fallbackCopy(sessionId, doCopy)
+      })
+    } else {
+      fallbackCopy(sessionId, doCopy)
+    }
+  }
+
+  const handleOpenInApp = (app: string | undefined, cwd: string): void => {
+    if (!app) return
+    void launchOpenInApp(app, cwd).then((res) => {
+      if (!res.ok) showToast(res.error ?? translate(t, 'row.openFailed'), false)
+    })
+  }
+
   useEffect(() => { injectManageStyles() }, [])
 
   if (sessionsError !== null) {
@@ -456,6 +611,12 @@ export function ManageConsole({ t, open, deferOpen = false }: {
         onClick: () => { lastOpenError = null; setOpenError(null) },
       }, '×'),
     ])]),
+    // 就地成功/失败提示（3s 自动消失）
+    ...(toast === null ? [] : [createElement('div', {
+      key: 'toast',
+      className: `dmss_toast${toast.ok ? ' dmss_toastOk' : ' dmss_toastErr'}`,
+      role: 'status',
+    }, toast.text)]),
     createElement('div', { key: 'groups', className: 'dmss_manageList' },
       ...manageGroups.map(group => createElement('div', { key: group.cwd === '' ? '(nocwd)' : group.cwd, className: 'dmss_group' }, [
         createElement('div', {
@@ -475,6 +636,23 @@ export function ManageConsole({ t, open, deferOpen = false }: {
             })),
           createElement('span', { key: 'title', className: 'dmss_groupTitle' }, group.cwd === '' ? translate(t, 'manage.group.nocwd') : group.cwd),
           createElement('span', { key: 'count', className: 'dmss_groupCount' }, `${group.items.filter(item => matchesText(item)).length}/${group.items.length}`),
+          // explorer / git 按钮：只在 cwd 非空且 app 可用时渲染
+          (group.cwd !== '' && (explorerApp !== undefined || gitApp !== undefined))
+            ? createElement('div', { key: 'groupActs', className: 'dmss_groupActions' }, [
+                explorerApp !== undefined
+                  ? iconBtn('explorer', translate(t, 'row.explorer'),
+                      createElement('span', { style: { fontSize: '11px' } }, '📂'),
+                      false, '',
+                      () => { handleOpenInApp(explorerApp, group.cwd) })
+                  : null,
+                gitApp !== undefined
+                  ? iconBtn('git', translate(t, 'row.git'),
+                      createElement('span', { style: { fontSize: '11px' } }, '🌿'),
+                      false, '',
+                      () => { handleOpenInApp(gitApp, group.cwd) })
+                  : null,
+              ])
+            : null,
         ]),
         ...(collapsedGroups.has(group.cwd) ? [] : [createElement('div', {
           key: 'grid',
@@ -492,6 +670,9 @@ export function ManageConsole({ t, open, deferOpen = false }: {
           onKeyDown: (e: { key: string }) => { if (e.key === 'Enter' || e.key === ' ') navigate(item) },
         }, [
           createElement('span', { key: 'line', className: 'dmss_rowTitle' }, [
+            pinnedIds.has(item.sessionId)
+              ? createElement('span', { key: 'pin', className: 'dmss_pinnedIcon', 'aria-hidden': true, title: translate(t, 'row.pin') }, '📌')
+              : null,
             createElement('span', { key: 'check', className: 'dmss_check' },
               createElement('input', {
                 type: 'checkbox',
@@ -510,11 +691,53 @@ export function ManageConsole({ t, open, deferOpen = false }: {
               onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation(); toggleFavorite(item.sessionId) },
               onDoubleClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
             }, favorites.has(item.sessionId) ? '★' : '☆'),
-            createElement('span', { key: 'x', className: 'dmss_titleText' }, rowTitle(item)),
+            // 改名模式：如果当前行在编辑中则显示输入框
+            editing?.id === item.sessionId
+              ? createElement('input', {
+                  key: 'edit',
+                  autoFocus: true,
+                  className: 'dmss_search',
+                  style: { flex: '1 1 auto', minWidth: 0, height: '20px', fontSize: '12px' },
+                  value: editing.draft,
+                  onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
+                  onDoubleClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
+                  onChange: (e: { target: { value: string } }) => { setEditing(prev => prev === null ? prev : { ...prev, draft: e.target.value }) },
+                  onKeyDown: (e: { key: string; stopPropagation: () => void }) => {
+                    e.stopPropagation()
+                    if (e.key === 'Enter') { void handleRename(item, editing.draft) }
+                    else if (e.key === 'Escape') { setEditing(null) }
+                  },
+                })
+              : createElement('span', { key: 'x', className: 'dmss_titleText' }, rowTitle(item)),
             item.archived === true && createElement('span', { key: 'arch', className: 'dmss_tagArch' }, translate(t, 'tag.archived')),
             createElement('span', { key: 'tag', className: 'dmss_tag' }, fmtTime(item.updatedAt)),
           ]),
-          createElement('span', { key: 'meta', className: 'dmss_meta' }, item.cwd),
+          // 元信息行：短 id + 悬浮全 id + 复制按钮
+          createElement('span', { key: 'meta', className: 'dmss_meta' }, [
+            createElement('span', { key: 'uuid', className: 'dmss_uuid', title: item.sessionId }, item.sessionId.slice(0, 13)),
+            iconBtn('copyId', translate(t, 'row.copyId'),
+              createElement('span', { style: { fontSize: '10px' } }, '⎘'),
+              false, '',
+              () => { handleCopyUUID(item.sessionId) }),
+          ]),
+          // 行内动作区（hover/focus 显示）
+          createElement('div', { key: 'acts', className: 'dmss_rowActions', onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() }, onDoubleClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() } }, [
+            iconBtn('pinBtn', translate(t, pinnedIds.has(item.sessionId) ? 'row.unpin' : 'row.pin'),
+              createElement('span', { style: { fontSize: '11px' } }, pinnedIds.has(item.sessionId) ? '📌' : '📍'),
+              !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).pin,
+              translate(t, 'row.archivedHint'),
+              () => { handlePin(item) }),
+            iconBtn('renameBtn', translate(t, 'row.rename'),
+              createElement('span', { style: { fontSize: '11px' } }, '✏'),
+              !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).rename,
+              translate(t, 'row.archivedHint'),
+              () => { setEditing({ id: item.sessionId, draft: item.title }) }),
+            iconBtn('forkBtn', translate(t, 'row.fork'),
+              createElement('span', { style: { fontSize: '11px' } }, '⎇'),
+              !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).fork,
+              translate(t, 'row.archivedHint'),
+              () => { handleFork(item) }),
+          ]),
         ])))]),
       ])),
     ),
