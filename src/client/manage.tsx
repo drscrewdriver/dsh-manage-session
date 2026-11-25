@@ -506,9 +506,9 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
         titleStream.current?.abort()
         titleStream.current = null
         setSessions(null) // 重取列表
-        showToast(translate(t, 'row.forked', { id: res.childId ?? '' }), true)
+        showToast(translate(t, 'row.clone', { id: res.childId ?? '' }), true)
       } else {
-        showToast(res.error ?? translate(t, 'row.forkFailed'), false)
+        showToast(res.error ?? translate(t, 'row.cloneFailed'), false)
       }
     })
   }
@@ -735,17 +735,17 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
           ]),
           // 行内动作区（hover/focus 显示）
           createElement('div', { key: 'acts', className: 'dmss_rowActions', onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() }, onDoubleClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() } }, [
-            iconBtn('pinBtn', translate(t, pinnedIds.has(item.sessionId) ? 'row.unpin' : 'row.pin'),
+            iconBtn('pinBtn', translate(t, pinnedIds.has(item.sessionId) ? 'row.unpinAction' : 'row.pinAction'),
               createElement('span', { style: { fontSize: '11px' } }, pinnedIds.has(item.sessionId) ? '📌' : '📍'),
               !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).pin,
               translate(t, 'row.archivedHint'),
               () => { handlePin(item) }),
-            iconBtn('renameBtn', translate(t, 'row.rename'),
+            iconBtn('renameBtn', translate(t, 'row.renameAction'),
               createElement('span', { style: { fontSize: '11px' } }, '✏'),
               !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).rename,
               translate(t, 'row.archivedHint'),
               () => { setEditing({ id: item.sessionId, draft: item.title }) }),
-            iconBtn('forkBtn', translate(t, 'row.fork'),
+            iconBtn('cloneBtn', translate(t, 'row.cloneAction'),
               createElement('span', { style: { fontSize: '11px' } }, '⎇'),
               !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).fork,
               translate(t, 'row.archivedHint'),
