@@ -9,7 +9,7 @@
  * 动作面:session-history-archive / prune / purge（写官方存储文件,重启后
  * 侧栏完全生效——宿主半在成功路径上已同步联动索引）。
  */
-import { createElement, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
+import { createElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem, type OpenSessionOutcome } from './host-api.ts'
 import { translate, type LocaleKey } from './manage-locales.ts'
 import { matchesCatalogText } from './session-filter.ts'
@@ -167,21 +167,34 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set())
 
   // ── 订阅官方服务的置顶/归档/live 集合 ────────────────────────────────────
-  // services 缺席时返回常量：不订阅，不重渲染
+  // 用 useState+useEffect，不用 useSyncExternalStore：readXxx 每次返回新 Set，
+  // 作 getSnapshot 会触发 React「快照引用不稳定 → 无限重渲染」崩溃（白屏）。
+  // 改由订阅回调仅在服务变化时 setState；缺席即空集/undefined，绝不抛错。
   const get = services ?? (() => undefined)
-  const pinnedIds = useSyncExternalStore(
-    (cb) => { try { const s = get('workspaces') as { subscribe?: (l: () => void) => () => void } | undefined; return s?.subscribe?.(cb) ?? (() => {}) } catch { return () => {} } },
-    () => readPinnedIds(get),
-  )
-  const archivedIds = useSyncExternalStore(
-    (cb) => { try { const s = get('workspaces') as { subscribe?: (l: () => void) => () => void } | undefined; return s?.subscribe?.(cb) ?? (() => {}) } catch { return () => {} } },
-    () => readArchivedIds(get),
-  )
-  // liveIds：服务缺席时此 store 不运行，缺省 undefined
-  const liveIds = useSyncExternalStore(
-    (cb) => { try { const s = get('sessions') as { subscribe?: (l: () => void) => () => void } | undefined; return s?.subscribe?.(cb) ?? (() => {}) } catch { return () => {} } },
-    () => readLiveIds(get),
-  )
+  const [pinnedIds, setPinnedIds] = useState<ReadonlySet<string>>(() => readPinnedIds(get))
+  const [archivedIds, setArchivedIds] = useState<ReadonlySet<string>>(() => readArchivedIds(get))
+  const [liveIds, setLiveIds] = useState<ReadonlySet<string> | undefined>(() => readLiveIds(get))
+  useEffect(() => {
+    let alive = true
+    const refresh = (): void => {
+      if (!alive) return
+      setPinnedIds(readPinnedIds(get))
+      setArchivedIds(readArchivedIds(get))
+      setLiveIds(readLiveIds(get))
+    }
+    refresh() // 补一次：服务可能晚于本组件挂载就绪
+    let offWs: (() => void) | undefined
+    let offSess: (() => void) | undefined
+    try {
+      const ws = get('workspaces') as { subscribe?: (l: () => void) => () => void } | undefined
+      offWs = ws?.subscribe?.(refresh)
+    } catch { /* 服务缺席 */ }
+    try {
+      const sess = get('sessions') as { subscribe?: (l: () => void) => () => void } | undefined
+      offSess = sess?.subscribe?.(refresh)
+    } catch { /* 服务缺席 */ }
+    return () => { alive = false; try { offWs?.() } catch { /* */ } try { offSess?.() } catch { /* */ } }
+  }, [])
 
   // ── open-in-app 可用应用集合（挂载取一次） ──────────────────────────────
   const [openApps, setOpenApps] = useState<ReadonlySet<string>>(new Set())
