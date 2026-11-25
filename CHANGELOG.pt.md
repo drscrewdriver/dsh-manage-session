@@ -1,5 +1,13 @@
 # Registro de mudanças
 
+## 2.0.20
+
+**Comandos de limpeza passam a montar caminho absoluto automaticamente: sem `node_modules/...` fixo e sem cd para o profile.**
+
+- O host agora devolve `scriptPath` em `session-tombstones`, derivado da posição de `lib/index.js` → `../scripts/session-purge.mjs`.
+- O painel monta os comandos com esse caminho e coloca aspas duplas quando há espaços; em hosts antigos cai no caminho relativo.
+- Texto mudou de “executar no profile” para “executar diretamente (abaixo o caminho atual)”.
+
 ## 2.0.19
 
 **Tabela de comandos da aba de limpeza: cada linha indica “somente leitura / escrita·restaurável / destrutivo” e traz uma explicação.**

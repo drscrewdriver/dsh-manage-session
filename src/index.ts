@@ -22,6 +22,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   DEFAULT_CONFIG,
   STEWARD_API_PREFIX,
@@ -952,7 +953,16 @@ export async function handleMethod(
         entityExists: remains,
       })
     }
-    return { ok: true, ledger: runtime.tombstoneFile ?? '', total: tombstones.size, pending }
+    return {
+      ok: true,
+      ledger: runtime.tombstoneFile ?? '',
+      total: tombstones.size,
+      pending,
+      // 面板清理命令用**绝对路径**（自适应拼接：本包 lib/index.js → ../scripts/session-purge.mjs），
+      // 用户不必先 cd 到 profile；路径含空格时客户端会加引号。
+      scriptPath: join(dirname(dirname(fileURLToPath(import.meta.url))), 'scripts', 'session-purge.mjs'),
+      dshHome: runtime.dshHome,
+    }
   }
   if (method === 'session-tombstone-forget') {
     const request = (payload ?? {}) as { sessionIds?: unknown }

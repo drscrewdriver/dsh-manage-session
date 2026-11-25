@@ -1,5 +1,13 @@
 # Changelog / 变更日志
 
+## 2.0.20
+
+**清理命令改为绝对路径自适应拼接：不再写死 `node_modules/...`，也不必先 cd 到 profile。**
+
+- 宿主侧 `session-tombstones` 新增返回 `scriptPath`：由本包 `lib/index.js` 位置推导 `../scripts/session-purge.mjs`（绝对路径）。
+- 面板按返回路径拼命令；路径含空格时自动加双引号（Windows/macOS 都能直接粘）。老宿主没这字段时回退到相对路径。
+- 文案从「到 profile 目录执行」改为「再直接执行；以下为当前安装路径」。
+
 ## 2.0.19
 
 **清理页签的命令表：逐条标清「只读 / 写入·可还原 / 破坏性」并配一句说明。**

@@ -39,21 +39,36 @@ export interface CleanupCommand {
     | 'manage.cleanup.cmd.destroy'
 }
 
-const SCRIPT = 'node node_modules/dsh-manage-session/scripts/session-purge.mjs'
+/** 安装包内的脚本相对位置（host 拿不到绝对路径时的兜底）。 */
+const FALLBACK_SCRIPT = 'node_modules/dsh-manage-session/scripts/session-purge.mjs'
 
-/** 命令清单（面板逐条展示；复制全部 = 按此顺序拼接）。 */
-export const CLEANUP_COMMANDS: readonly CleanupCommand[] = [
-  { cmd: `${SCRIPT} list`, kind: 'read', descKey: 'manage.cleanup.cmd.list' },
-  { cmd: `${SCRIPT} tombstones`, kind: 'read', descKey: 'manage.cleanup.cmd.tombstones' },
-  { cmd: `${SCRIPT} ledger`, kind: 'read', descKey: 'manage.cleanup.cmd.ledger' },
-  { cmd: `${SCRIPT} trash --class empty-session --archive-first`, kind: 'write', descKey: 'manage.cleanup.cmd.trash' },
-  { cmd: `${SCRIPT} compact --older-than 7 --window week`, kind: 'write', descKey: 'manage.cleanup.cmd.compact' },
-  { cmd: `${SCRIPT} restore --archive <period> [--ids <id,...>]`, kind: 'write', descKey: 'manage.cleanup.cmd.restore' },
-  { cmd: `${SCRIPT} purge --batch <batch> --yes`, kind: 'destroy', descKey: 'manage.cleanup.cmd.destroy' },
-]
+/** 路径含空白时加双引号（Windows/macOS 都能直接用）。 */
+function quotePath(path: string): string {
+  return /\s/.test(path) ? `"${path}"` : path
+}
+
+/**
+ * 按实际安装路径拼命令表（自适应）：
+ * - 优先用 host 返回的 `scriptPath`（绝对路径，无需 cd）；
+ * - 缺省回退到 profile 内的 node_modules 相对路径。
+ */
+export function cleanupCommands(scriptPath: string): readonly CleanupCommand[] {
+  const script = quotePath(scriptPath === '' ? FALLBACK_SCRIPT : scriptPath)
+  return [
+    { cmd: `node ${script} list`, kind: 'read', descKey: 'manage.cleanup.cmd.list' },
+    { cmd: `node ${script} tombstones`, kind: 'read', descKey: 'manage.cleanup.cmd.tombstones' },
+    { cmd: `node ${script} ledger`, kind: 'read', descKey: 'manage.cleanup.cmd.ledger' },
+    { cmd: `node ${script} trash --class empty-session --archive-first`, kind: 'write', descKey: 'manage.cleanup.cmd.trash' },
+    { cmd: `node ${script} compact --older-than 7 --window week`, kind: 'write', descKey: 'manage.cleanup.cmd.compact' },
+    { cmd: `node ${script} restore --archive <period> [--ids <id,...>]`, kind: 'write', descKey: 'manage.cleanup.cmd.restore' },
+    { cmd: `node ${script} purge --batch <batch> --yes`, kind: 'destroy', descKey: 'manage.cleanup.cmd.destroy' },
+  ]
+}
 
 /** 复制全部时的纯文本（顺序与面板一致）。 */
-export const CLEANUP_COMMANDS_TEXT = CLEANUP_COMMANDS.map(row => row.cmd).join('\n')
+export function cleanupCommandsText(scriptPath: string): string {
+  return cleanupCommands(scriptPath).map(row => row.cmd).join('\n')
+}
 
 const STYLE_ID = 'dmsc-cleanup-style'
 const CLEANUP_CSS = `
@@ -102,18 +117,21 @@ function useCleanupStyles(): void {
 export function CleanupPanel(): ReactElement {
   const [rows, setRows] = useState<CleanupRow[] | null>(null)
   const [ledger, setLedger] = useState('')
+  // host 返回的脚本绝对路径（自适应拼接用；空串 = 老宿主，回退相对路径）。
+  const [scriptPath, setScriptPath] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
   const [copiedCmd, setCopiedCmd] = useState('')
   useCleanupStyles()
 
-  /** 只读拉一次：host 只返回没删干净的条目。 */
+  /** 只读拉一次：host 只返回没删干净的条目，并带上脚本绝对路径。 */
   const refresh = (): void => {
-    void callSteward<{ pending?: CleanupRow[]; ledger?: string }>('session-tombstones', {}).then((res) => {
+    void callSteward<{ pending?: CleanupRow[]; ledger?: string; scriptPath?: string }>('session-tombstones', {}).then((res) => {
       if (!res.ok) return
       setRows(Array.isArray(res.pending) ? res.pending : [])
       setLedger(res.ledger ?? '')
+      setScriptPath(typeof res.scriptPath === 'string' ? res.scriptPath : '')
     })
   }
   useEffect(refresh, [])
@@ -158,7 +176,7 @@ export function CleanupPanel(): ReactElement {
   const copy = (): void => {
     const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
     if (clipboard === undefined) return
-    void clipboard.writeText(CLEANUP_COMMANDS_TEXT).then(() => {
+    void clipboard.writeText(cleanupCommandsText(scriptPath)).then(() => {
       setCopied(true)
       setTimeout(() => { setCopied(false) }, 1500)
     }).catch(() => { /* 不阻断面板 */ })
@@ -175,6 +193,8 @@ export function CleanupPanel(): ReactElement {
   }
 
   const list = rows ?? []
+  // 命令按实际安装路径拼（host 绝对路径优先；含空格自动加引号）。
+  const commands = cleanupCommands(scriptPath)
   return createElement('section', { className: 'dmsc_root' }, [
     createElement('div', { key: 'head', className: 'dmsc_head' }, [
       createElement('span', { key: 'title', className: 'dmsc_title' }, translate(undefined, 'manage.cleanup.title')),
@@ -182,7 +202,7 @@ export function CleanupPanel(): ReactElement {
         ? createElement('span', { key: 'count', className: 'dmsc_tagPend' }, translate(undefined, 'manage.cleanup.pending', { n: list.length }))
         : createElement('span', { key: 'count', className: 'dmsc_tag' }, translate(undefined, 'manage.cleanup.empty')),
       createElement('button', {
-        key: 'copy', type: 'button', className: 'dmsc_btn', title: CLEANUP_COMMANDS_TEXT, onClick: copy,
+        key: 'copy', type: 'button', className: 'dmsc_btn', title: cleanupCommandsText(scriptPath), onClick: copy,
       }, translate(undefined, copied ? 'manage.cleanup.copied' : 'manage.cleanup.copy')),
     ]),
     ...(message === null
@@ -209,7 +229,7 @@ export function CleanupPanel(): ReactElement {
     createElement('div', { key: 'scriptHead', className: 'dmsc_hint' }, translate(undefined, 'manage.cleanup.script')),
     createElement('div', { key: 'scriptHint', className: 'dmsc_hint', style: { marginTop: '4px' } }, translate(undefined, 'manage.cleanup.commandsHint')),
     // 逐条命令：分类徽标（只读 / 写入·可还原 / 破坏性）+ 命令 + 说明 + 单条复制。
-    ...CLEANUP_COMMANDS.map(row => createElement('div', { key: row.cmd, className: 'dmsc_cmdRow' }, [
+    ...commands.map(row => createElement('div', { key: row.cmd, className: 'dmsc_cmdRow' }, [
       createElement('div', { key: 'line', className: 'dmsc_cmdLine' }, [
         createElement('span', {
           key: 'kind',
