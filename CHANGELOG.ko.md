@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.15
+
+**결정론적 정리 스크립트(휴지통 버전, "파일은 지웠는데 uuid가 남는" 유령 행 수정).**
+
+- `scripts/session-purge.mjs` 추가: 호스트 종료 후 실행하며 **세션 데이터를 직접 rm하지 않습니다** —— `list`(읽기 전용 분류: `orphan-id` / `empty-session` / `untitled-session` / `encoded-id` / `ok`) → `archive`(아카이브 집합에 쓰고 재검증) → `trash`(세션 디렉터리와 투영 캐시를 `~/.dsh/trash/manage-session/<batch>/`로 통째 이동하고 `manifest.json` 기록, 이후 장부에서 uuid 제거) → `compact`(주기 day/week/month 단위로 만료 배치를 하나의 `archive/<주기>.tar.zst`로 병합 재압축하고, 바로 복원 가능한 흘어진 디렉터리를 비움) → `restore`(휴지통 또는 아카이브에서 그대로 복원) → `ledger`(append-only 대장: uuid / cwd / 바이트 / sha256).
+- 순서는 "아카이브 → 재검증 → 파일 이동 → 장부 정리"로 고정되며 어느 단계에서 실패해도 재시도 가능한 상태로 멈춥니다. `purge`는 실체가 없는 유령 uuid 전용이고, 배치 영구 삭제는 `purge --batch <이름> --yes`가 필요합니다.
+- 호스트 프로세스가 실행 중이면 trash/compact/restore를 거부합니다(`--allow-running`으로 명시적 우회). 이동 대상은 `<dshHome>/sessions/<workspace>/<session>/`의 직접 하위 항목만 허용합니다.
+- 세션 id ↔ 디렉터리 이름 양방향 인코딩(`~XXXX`)을 지원해 `im:` 가상 세션도 목록·휴지통·복원이 가능합니다.
+
 ## 2.0.14
 
 **관리대 상호작용 세 가지 수정(사용자 피드백).**

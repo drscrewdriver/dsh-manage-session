@@ -66,6 +66,29 @@ Namespace `manage-session`: `enabled`, `historyFiles`, `healthCheck`, `directDel
 
 - `~/.dsh/storages/manage-session-favorites.json` — favorites
 - `~/.dsh/storages/workspace.json` — host-owned archive array + workspace membership (backed up before writes)
+- `~/.dsh/storages/manage-session/purge-ledger.jsonl` — append-only cleanup ledger (one uuid per line)
+- `~/.dsh/trash/manage-session/` — recycle bin (batch dirs + `archive/*.tar.zst`)
+
+## Deterministic cleanup (run with the host closed)
+
+The panel's hard delete runs inside the host process: deleted directories can still leave a uuid-only "ghost" row behind through in-memory sessions and the next bookkeeping write-back. `scripts/session-purge.mjs` moves deletion outside the host and **never `rm`s session data**:
+
+```bash
+node scripts/session-purge.mjs list                       # read-only classified inventory
+node scripts/session-purge.mjs archive --ids <id,id,...>  # 1. write the archive set and re-verify it
+node scripts/session-purge.mjs trash --class empty-session --archive-first  # 2. move to the recycle bin, drop the uuid from bookkeeping
+node scripts/session-purge.mjs compact --older-than 7 --window week  # 3. merge aged batches per period into archive/<period>.tar.zst, then empty the loose dirs
+node scripts/session-purge.mjs restore --archive <period> [--ids <id,...>]  # undo: restore from the period archive
+node scripts/session-purge.mjs ledger                     # trashed / compacted / restored history
+```
+
+- Classes: `orphan-id`, `empty-session`, `untitled-session`, `encoded-id`, `ok`.
+- Sessions and their projection caches move into `~/.dsh/trash/manage-session/<batch>/` with a `manifest.json`; `restore --batch` moves them back unchanged.
+- `compact --older-than 7 --window week` **merges aged batches per period** into `archive/<period>.tar.zst` (rerunning in the same period merges into the same archive instead of creating a new file) and then **empties the directly restorable loose dirs**; standard tar+zstd, so 7-Zip can open it too.
+- `purge` only drops bookkeeping for ids that have no on-disk entity; destroying a batch permanently needs `purge --batch <name> --yes`.
+- **The in-panel delete follows the same order**: archive first (retrying with `stopActivity: true` for active sessions) → detach live sessions before touching disk → delete + drop bookkeeping → record an in-process tombstone so the catalog stops listing it. Per-session failures are reported instead of only a success count.
+- Refuses to run when a DSH process is alive (`--allow-running` overrides) and only touches direct children of `<dshHome>/sessions/<workspace>/<session>/`.
+- Session ids and directory names are decoded both ways (`~XXXX`), so `im:` virtual sessions are listed, trashed and restored like any other session.
 
 ## Development
 

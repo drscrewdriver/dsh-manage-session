@@ -1,5 +1,14 @@
 # Registro de mudanças
 
+## 2.0.15
+
+**Script determinístico de limpeza (versão lixeira; corrige a linha fantasma “apaguei o arquivo e o uuid ficou”).**
+
+- Novo `scripts/session-purge.mjs`: roda com o host fechado e **nunca remove dados de sessão com rm** —— `list` (inventário classificado, somente leitura: `orphan-id` / `empty-session` / `untitled-session` / `encoded-id` / `ok`) → `archive` (grava o conjunto de arquivados e reverifica) → `trash` (move diretório da sessão + cache de projeção para `~/.dsh/trash/manage-session/<batch>/` com `manifest.json`, depois tira o uuid da contabilidade) → `compact` (agrupa os lotes vencidos por período day/week/month em um único `archive/<período>.tar.zst` e esvazia os diretórios soltos de restauração direta) → `restore` (devolve do lixo ou do arquivo compactado) → `ledger` (registro append-only: uuid / cwd / bytes / sha256).
+- Ordem fixa “arquivar → reverificar → mover arquivos → limpar contabilidade”; qualquer falha para num estado reexecutável. `purge` serve só para uuids fantasma sem entidade; destruir um lote em definitivo exige `purge --batch <nome> --yes`.
+- Recusa trash/compact/restore com um processo DSH vivo (`--allow-running` contorna de forma explícita) e só move filhos diretos de `<dshHome>/sessions/<workspace>/<session>/`.
+- Codificação bidirecional id ↔ nome de diretório (`~XXXX`): sessões virtuais `im:` também são listadas, arquivadas e restauradas.
+
 ## 2.0.14
 
 **Três ajustes de interação no console (feedback do usuário).**

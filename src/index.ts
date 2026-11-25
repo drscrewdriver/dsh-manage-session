@@ -258,6 +258,12 @@ export interface StewardRuntime {
   /** 标题 memo（5 min TTL；可选，缺省表示不缓存）。`apply()` 总是提供实例。 */
   titles?: TitleMemo
   /**
+   * 进程内墓碑：本进程已经物理删掉的会话 id。catalog 必须过滤它们——
+   * 宿主 `sessions.list()` 在 detach 失败/竞态时仍可能把已删会话还回来，
+   * 不过滤就会重新长出「活跃未命名孤儿」。
+   */
+  deletedSessions?: Set<string>
+  /**
    * 体检结果缓存（进程内，随 fiber 存活）。
    *
    * 可选：缺省表示本次装配不启用缓存（只影响「关面板重开」是否零延迟，
@@ -381,7 +387,11 @@ async function buildCatalog(runtime: StewardRuntime): Promise<{ ok: true; built:
   try {
     const records = await sessionQuery.listSessions()
     const memo = runtime.titles
-    const catalogRecords: CatalogTitleRecord[] = records.map(record => ({ id: record.header.id, header: record.header }))
+    const deleted = runtime.deletedSessions
+    const visibleRecords = deleted === undefined
+      ? records
+      : records.filter(record => !deleted.has(record.header.id))
+    const catalogRecords: CatalogTitleRecord[] = visibleRecords.map(record => ({ id: record.header.id, header: record.header }))
     // memo 先行短路：命中即零 I/O，也不再进三级解析（批量操作后已被主动失效）。
     const settled = new Map<string, { title: string; source: 'live' | 'cache' | 'pending' | 'none' }>()
     const unresolved: CatalogTitleRecord[] = []
@@ -396,7 +406,7 @@ async function buildCatalog(runtime: StewardRuntime): Promise<{ ok: true; built:
       memo?.set(sessionId, entry.title, entry.source)
     }
     const seen = new Set<string>()
-    const items: CatalogItem[] = records.map((record) => {
+    const items: CatalogItem[] = visibleRecords.map((record) => {
       const sessionId = record.header.id
       seen.add(sessionId)
       const known = settled.get(sessionId)
@@ -413,6 +423,7 @@ async function buildCatalog(runtime: StewardRuntime): Promise<{ ok: true; built:
     // 否则「归档域筛选」会漏掉真实存在于归档数组里的会话。
     for (const sessionId of archivedIds) {
       if (seen.has(sessionId)) continue
+      if (deleted?.has(sessionId) === true) continue
       items.push({ sessionId, title: '', cwd: '', updatedAt: 0, archived: true, titleSource: 'none' })
     }
     const pending = resolved.pending
@@ -534,24 +545,83 @@ interface MemoryRegistryFace {
   readonly archivedSessionIds?: readonly string[]
 }
 
+/** 宿主“活跃拒绝”错误名（`WorkspaceActiveSessionError`）。 */
+function isActiveRejection(err: unknown): boolean {
+  const name = err instanceof Error ? err.name : ''
+  const message = err instanceof Error ? err.message : String(err)
+  return /active/i.test(name) || /is active|active session/i.test(message)
+}
+
+/**
+ * 归档一个会话：活跃会话（开着的 tab / 正在跑回合）会被宿主拒绝，
+ * 此时按宿主自己的语义「先停活动再归档」重试一次。
+ *
+ * 不重试就只剩一条 failure：用户看到的是「点了归档没反应」，而这些会话
+ * 在下一步也删不掉（活跃会话进不了删除）。
+ */
+async function archiveWithActivity(registry: MemoryRegistryFace, sessionId: string): Promise<void> {
+  try {
+    await registry.archiveSession!.call(registry, sessionId)
+  } catch (err) {
+    if (!isActiveRejection(err)) throw err
+    await registry.archiveSession!.call(registry, sessionId, { stopActivity: true })
+  }
+}
+
 /** 逐 id 串行调用官方内存方法;失败按会话隔离收集（AM 批量语义）。 */
 async function runMemoryArchiveOps(
   registry: MemoryRegistryFace,
   ids: readonly string[],
   op: 'archive' | 'unarchive',
 ): Promise<{ succeeded: string[]; failures: { sessionId: string; reason: string }[] }> {
-  const fn = op === 'archive' ? registry.archiveSession : registry.unarchiveSession
   const succeeded: string[] = []
   const failures: { sessionId: string; reason: string }[] = []
   for (const id of ids) {
     try {
-      await fn!.call(registry, id)
+      if (op === 'archive') await archiveWithActivity(registry, id)
+      else await registry.unarchiveSession!.call(registry, id)
       succeeded.push(id)
     } catch (err) {
       failures.push({ sessionId: id, reason: String(err instanceof Error ? err.message : err) })
     }
   }
   return { succeeded, failures }
+}
+
+/** 宿主 `sessions` 服务的 detach 面（删盘前把活会话从本进程剥掉）。 */
+interface SessionsDetachFace {
+  get?(id: string): unknown
+  flush?(live: unknown): Promise<void>
+  liveEntryFor?(live: unknown): unknown
+  detachEntered?(entry: unknown): void
+}
+
+/**
+ * 删盘前先让宿主忘掉这个活会话。
+ *
+ * 不做这一步的后果就是「活跃未命名孤儿」：目录删了，但 `sessions.list()`
+ * 仍返回它，`sessionQuery.listSessions()` 也因此继续列出——标题源全 miss，
+ * 面板上就是一条没有标题、也点不开的 uuid 行，直到宿主重启。
+ * @returns 是否真的 detach 了一个活会话。
+ */
+async function forgetLiveSession(runtime: StewardRuntime, sessionId: string): Promise<boolean> {
+  const sessions = runtime.ctx?.get('sessions') as SessionsDetachFace | undefined
+  if (sessions?.get === undefined) return false
+  const live = sessions.get(sessionId)
+  if (live === undefined || live === null) return false
+  try {
+    if (sessions.flush !== undefined) await sessions.flush(live)
+    if (sessions.liveEntryFor !== undefined && sessions.detachEntered !== undefined) {
+      sessions.detachEntered(sessions.liveEntryFor(live))
+    }
+  } catch (err) {
+    runtime.log(`forget live session ${sessionId} failed: ${String(err instanceof Error ? err.message : err)}`)
+    return false
+  }
+  try {
+    (runtime.ctx as unknown as { emit?: (name: string, payload?: unknown) => void }).emit?.('api-session/removed', sessionId)
+  } catch { /* 通知失败不影响 detach 结论 */ }
+  return true
 }
 
 /** 收藏文件候选（与管家其余域同一 dshHome 纪律）。 */
@@ -652,6 +722,7 @@ export async function handleMethod(
       runtime.titles?.invalidateAll()
       return {
         ok: true,
+        requested: ids.length,
         added: ids.filter(id => !before.has(id)).length,
         total,
         requiresRestart: false,
@@ -687,12 +758,36 @@ export async function handleMethod(
     const request = (payload ?? {}) as { sessionIds?: unknown }
     const ids = validSessionIds(request.sessionIds)
     if (ids === undefined) return { ok: false, error: '缺少 sessionIds 数组' }
-    // 内存路径优先（P1:替换后的 registry 子类带 deleteSession 全痕删除,
-    // 官方 0.1.7/0.2.0 双线可用）—— 即时生效免重启;失败按会话隔离。
     const mem = runtime.registry() as (MemoryRegistryFace & {
       deleteSession?: (sessionId: string) => Promise<{ ok: boolean; skipped?: boolean; error?: string }>
       dshHome?: string
     }) | undefined
+
+    // ① 机制上先归档：删除永远不绕过归档。活跃会话（开着的 tab / 正在跑回合）
+    //    会拒绝普通归档，此处带 `stopActivity: true` 重试；归档失败只记录不阻断，
+    //    否则就是「该清理的清理不掉」。
+    const archivedNow = new Set(mem?.archivedSessionIds ?? [])
+    const archivedBy: string[] = []
+    const archiveFailures: { sessionId: string; reason: string }[] = []
+    if (mem?.archiveSession !== undefined) {
+      for (const id of ids) {
+        if (archivedNow.has(id)) { archivedBy.push(id); continue }
+        try {
+          await archiveWithActivity(mem, id)
+          archivedBy.push(id)
+        } catch (err) {
+          archiveFailures.push({ sessionId: id, reason: String(err instanceof Error ? err.message : err) })
+        }
+      }
+      runtime.titles?.invalidateAll()
+    }
+
+    // ② 删盘前先把本进程的活会话剥掉：否则目录没了、live 源还在，面板上
+    //    就留下一条活跃未命名孤儿（要等下次启动才消失）。
+    const detached: string[] = []
+    for (const id of ids) if (await forgetLiveSession(runtime, id)) detached.push(id)
+
+    // ③ 内存路径（替换后的 registry 带 deleteSession）优先，文件路径兜底。
     if (typeof mem?.deleteSession === 'function') {
       mem.dshHome = runtime.dshHome
       const succeeded: string[] = []
@@ -700,8 +795,9 @@ export async function handleMethod(
       const usage = locateSessionUsage(ids, runtime.dshHome)
       let freedBytes = 0
       for (const id of ids) {
-        freedBytes += usage.get(id)?.bytes ?? 0
-        freedBytes += usage.get(id)?.cacheBytes ?? 0
+        const entry = usage.get(id)
+        if (entry === undefined) continue
+        freedBytes += entry.bytes + entry.cacheBytes
       }
       for (const id of ids) {
         try {
@@ -712,22 +808,34 @@ export async function handleMethod(
           failures.push({ sessionId: id, reason: String(err instanceof Error ? err.message : err) })
         }
       }
-      // 实体已删：旧结论（含 `none` 负缓存）一律作废，否则 5 min 内重取会报幽灵行。
+      // 实体已删：旧结论（含 `none` 负缓存）一律作废；墓碑让 catalog 立刻不再列出。
       runtime.titles?.invalidate(ids)
+      for (const id of succeeded) runtime.deletedSessions?.add(id)
       return {
         ok: true,
         purged: succeeded.length,
         freedBytes,
         requiresRestart: false,
+        archivedFirst: archivedBy,
+        detached,
         ...(failures.length === 0 ? {} : { failures }),
+        ...(archiveFailures.length === 0 ? {} : { archiveFailures }),
       }
     }
     const purged = purgeHistory(payload, runtime.log, {
       dshHome: runtime.dshHome,
       searchPaths: storagePathsFor(runtime.dshHome),
     })
-    if (purged.ok) runtime.titles?.invalidate(ids)
-    return purged
+    if (purged.ok) {
+      runtime.titles?.invalidate(ids)
+      for (const id of ids) runtime.deletedSessions?.add(id)
+    }
+    return {
+      ...purged,
+      archivedFirst: archivedBy,
+      detached,
+      ...(archiveFailures.length === 0 ? {} : { archiveFailures }),
+    }
   }
 
   if (method === 'session-history-favorites-list') {
@@ -994,6 +1102,8 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
     sessionQuery: () => ctx.get('sessionQuery') as SwitchSessionQuery | undefined,
     // 标题 memo：5 min TTL，批量处置成功后主动失效（见 handleMethod 的写路）。
     titles: new TitleMemo(),
+    // 进程内墓碑：purge 成功的 id 立刻从 catalog 消失（见 buildCatalog）。
+    deletedSessions: new Set<string>(),
   }
 
   // ── dsh-tui 终端面：`/sessions` ────────────────────────────────

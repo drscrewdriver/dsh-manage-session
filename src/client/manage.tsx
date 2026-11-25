@@ -275,7 +275,16 @@ export function ManageConsole({ t, open, deferOpen = false }: {
     const method = kind === 'archive'
       ? 'session-history-archive'
       : kind === 'unarchive' ? 'session-history-prune' : 'session-history-purge'
-    void callSteward<{ added?: number; removed?: number; purged?: number; requiresRestart?: boolean }>(method, { sessionIds: ids }).then((res) => {
+    void callSteward<{
+      added?: number
+      removed?: number
+      purged?: number
+      requested?: number
+      requiresRestart?: boolean
+      failures?: { sessionId: string; reason: string }[]
+      archiveFailures?: { sessionId: string; reason: string }[]
+    }>(method, { sessionIds: ids }).then((res) => {
+      const failures = [...(res.failures ?? []), ...(res.archiveFailures ?? [])]
       const base = !res.ok
         ? translate(t, 'manage.done.error', { error: res.error ?? '?' })
         : kind === 'archive'
@@ -283,10 +292,14 @@ export function ManageConsole({ t, open, deferOpen = false }: {
           : kind === 'unarchive'
             ? translate(t, 'manage.done.unarchive', { n: res.removed ?? ids.length })
             : translate(t, 'manage.done.purge', { n: res.purged ?? ids.length })
+      // 逐条失败必须可见：只报成功数会让「活跃会话被拒」看起来像没反应。
+      const withFailures = res.ok === true && failures.length > 0
+        ? `${base}${translate(t, 'manage.done.failed', { n: failures.length, reason: failures[0]?.reason ?? '?' })}`
+        : base
       // 及时性如实呈现:内存路径即时生效;文件降级路径才需要重启。
       const message = res.ok === true && res.requiresRestart === true
-        ? `${base} ${translate(t, 'manage.done.restart')}`
-        : base
+        ? `${withFailures} ${translate(t, 'manage.done.restart')}`
+        : withFailures
       setBatch({ busy: false, message, ok: res.ok === true })
       if (res.ok) {
         setSelected(new Set())

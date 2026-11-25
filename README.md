@@ -90,6 +90,29 @@ dsh plugin --profile web add "file:E:/test/rewrite-agently/mine-dsh-plugins/dsh-
 |---|---|
 | `~/.dsh/storages/manage-session-favorites.json` | 收藏集合（按 sessionId） |
 | `~/.dsh/storages/workspace.json` | 归档数组与工作区成员表（**宿主文件**，本插件写入前自动备份） |
+| `~/.dsh/storages/manage-session/purge-ledger.jsonl` | 确定性脚本的清理台账（append-only，逐条 uuid） |
+| `~/.dsh/trash/manage-session/` | 回收站：未压缩批次目录 + `archive/*.tar.zst` |
+
+## 确定性清理（宿主关闭后运行）
+
+管理台的「清理归档文件」在宿主进程内执行：目录删了，宿主内存里还活着的会话、以及下次写回记账，都可能让侧栏留一条只有 uuid 的「幽灵」行。`scripts/session-purge.mjs` 把删除搬到宿主**完全退出之后**，而且**从不直接 rm 会话数据**：
+
+```bash
+node scripts/session-purge.mjs list                       # 只读：分类清单（不写任何东西）
+node scripts/session-purge.mjs archive --ids <id,id,...>  # ① 先写归档集合并复核
+node scripts/session-purge.mjs trash   --class empty-session --archive-first  # ② 搬进回收站 + 摘记账（幽灵编号在此清除）
+node scripts/session-purge.mjs compact --older-than 7 --window week  # ③ 按周期合并重压成 archive/<周期>.tar.zst，清空散目录
+node scripts/session-purge.mjs restore --archive <周期> [--ids <id,...>]  # 反悔：从归档原样搬回
+node scripts/session-purge.mjs ledger                     # 回看清理 / 压缩 / 还原台账
+```
+
+- 分类：`orphan-id`（记账有、盘上无）、`empty-session`（0 条消息且无标题）、`untitled-session`（有内容无标题）、`encoded-id`（`im:` 等编码名会话）、`ok`。
+- 搬运先归档后物理搬动，再摘记账：会话目录与投影缓存整段进 `~/.dsh/trash/manage-session/<batch>/`（含 `manifest.json`），`restore --batch` 可原样搬回。
+- `compact --older-than 7 --window week` 把到期批次**按周期合并重压**成 `archive/<周期>.tar.zst`（同周期反复跑会合并进同一归档，不是一周多个包），成功后把“可直接恢复”的散目录**清空**；标准 tar+zstd，7-Zip 也能解。
+- 台账 `purge-ledger.jsonl` 逐条记 uuid / cwd / createdAt / 字节数 / 批次 / sha256；`purge` 只用于摘除无实体的幽灵编号，永久销毁批次需 `purge --batch <名> --yes`。
+- **面板内删除也遵守同一顺序**：先归档（活跃会话带 `stopActivity: true` 重试）→ 删盘前 detach 本进程活会话 → 删盘 + 摘记账 → 记进程内墓碑（catalog 立刻不再列出）；逐条失败会明示原因，不再只报成功数。
+- 守卫：检测到 DSH 进程在跑就拒绝 trash/compact/restore（`--allow-running` 可显式跳过）；只允许搬运 `<dshHome>/sessions/<workspace>/<session>/` 的直接子项。
+- 会话 id ↔ 目录名双向编码（`~XXXX`），`im:` 虚拟会话同样可列、可归档、可还原。
 
 ## 四门体检
 

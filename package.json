@@ -1,6 +1,6 @@
 {
   "name": "dsh-manage-session",
-  "version": "2.0.14",
+  "version": "2.0.15",
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
     "tag": "latest",
@@ -57,6 +57,7 @@
     "prepublishOnly": "npm run build && node scripts/check-release.mjs",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
+    "session-purge": "node scripts/session-purge.mjs",
     "test:client": "node tests/client-store.test.mjs && node --import tsx tests/client-locales.test.mjs && node --import tsx tests/client-open-session.test.mjs && node --import tsx tests/client-sse.test.mjs",
     "test:release": "node scripts/check-release.mjs"
   },
@@ -81,6 +82,7 @@
     "lib",
     "locale",
     "screenshots.json",
+    "scripts/session-purge.mjs",
     "src"
   ],
   "engines": {

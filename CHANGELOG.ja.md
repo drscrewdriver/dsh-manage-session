@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.15
+
+**決定的なクリーンアップスクリプト（ゴミ箱版。「ファイルを消したのに uuid が残る」幽霊行の修正）。**
+
+- `scripts/session-purge.mjs` を追加：ホスト終了後に実行し、**セッションデータを直接 rm しない** —— `list`（読み取り専用の分類：`orphan-id` / `empty-session` / `untitled-session` / `encoded-id` / `ok`）→ `archive`（アーカイブ集合に書き込み、再検証）→ `trash`（セッションディレクトリと投影キャッシュを `~/.dsh/trash/manage-session/<batch>/` へ丸ごと移動し、`manifest.json` を残す。その後記帳から uuid を外す）→ `compact`（期間 day/week/month で期限切れバッチを一つの `archive/<期間>.tar.zst` に統合再圧縮し、直接復元できる散ディレクトリを空にする）→ `restore`（ゴミ箱またはアーカイブからそのまま戻す）→ `ledger`（append-only 台帳：uuid / cwd / バイト数 / sha256）。
+- 順序は「アーカイブ → 再検証 → ファイル移動 → 記帳整理」で固定。どの段で失敗しても再実行できる状態で止まる；`purge` は実体の無い幽霊 uuid 専用、バッチの永久破棄は `purge --batch <名> --yes`。
+- ホストプロセスが動いていれば trash/compact/restore を拒否（`--allow-running` で明示的に無効化可）。移動対象は `<dshHome>/sessions/<workspace>/<session>/` の直接の子のみ。
+- セッション id ↔ ディレクトリ名の双方向エンコード（`~XXXX`）に対応：`im:` 仮想セッションも一覧・ゴミ箱行き・復元ができる。
+
 ## 2.0.14
 
 **管理台のインタラクションを三つ修正（ユーザー報告）。**

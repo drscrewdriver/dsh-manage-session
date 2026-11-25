@@ -1,5 +1,17 @@
 # Changelog / 变更日志
 
+## 2.0.15
+
+**确定性清理脚本（回收站版，修「删了文件仍留 uuid」的幽灵行）。**
+
+- 新增 `scripts/session-purge.mjs`：宿主关闭后运行，**永不直接 rm 会话数据** —— `list`（只读分类：`orphan-id` / `empty-session` / `untitled-session` / `encoded-id` / `ok`）→ `archive`（写归档集合并复核）→ `trash`（会话目录 + 投影缓存整段搬进 `~/.dsh/trash/manage-session/<batch>/`，含 `manifest.json`，再摘掉记账里的 uuid）→ `compact`（按周期 day/week/month 把到期批次**合并重压**成 `archive/<周期>.tar.zst`，并把可直接恢复的散目录清空）→ `restore`（从回收站或归档原样搬回）→ `ledger`（append-only 台账：uuid / cwd / 字节数 / sha256）。
+- 顺序固定「先归档 → 复核 → 搬文件 → 摘记账」，任一步失败都停在可重试状态；`purge` 只用于摘除无实体的幽灵编号，永久销毁批次需 `purge --batch <名> --yes`。
+- **删除机制修正（该清理的清理不掉）**：面板内的「删除」现在**先归档再删**；活跃会话（开着的 tab / 正在跑回合）被宿主拒绝时自动带 `stopActivity: true` 重试；删盘前先 `flush` + `detachEntered` 把本进程的活会话剥掉（否则目录没了、`sessions.list()` 还在，面板就留一条活跃未命名孤儿）；删成功即记进程内墓碑，catalog 立刻不再列出。
+- **逐条失败可见**：归档/删除返回 `failures` / `archiveFailures`，管理台不再只报成功数（之前全部失败时看起来像“点了没反应”）。
+- 宿主进程在跑即拒绝 trash/compact/restore（`--allow-running` 可显式跳过）；只允许搬运 `<dshHome>/sessions/<workspace>/<session>/` 的直接子项。
+- 会话 id ↔ 目录名双向编码（`~XXXX`）：`im:` 虚拟会话同样可列出、归档进回收站、原样还原。
+- 实测本机 251 会话：`orphan-id=0`、`empty-session=3`、`encoded-id=6`、`ok=242` —— 「未命名」不是删除残留：3 条是真空会话（0 条消息、无 `session/title`），6 条是编码名会话。
+
 ## 2.0.14
 
 **管理台交互三修（用户反馈）。**
