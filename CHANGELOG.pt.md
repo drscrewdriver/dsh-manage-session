@@ -1,5 +1,13 @@
 # Registro de mudanças
 
+## 2.0.18
+
+**A área de limpeza virou aba: saiu do rodapé do painel para a aba de bastidores ao lado de “Verificação”.**
+
+- O painel passa a ter três abas: **Gerenciar / Verificação / Limpeza**; `historyFiles=false` oculta a de limpeza e `healthCheck=false` oculta a de verificação.
+- Conteúdo da aba: lista do que não foi apagado por completo + repetir exclusão / revogar tombstone + cópia dos 5 comandos + caminho do registro (avisando para sair do DSH antes).
+- Implementação extraída em `cleanup-panel.tsx` (estilos próprios): trocar de aba não depende da desmontagem do console, e o console volta a ser só a lista de sessões.
+
 ## 2.0.17
 
 **Nova “área de limpeza” no painel: o que não foi apagado por completo fica visível, pode ser tratado ali e os comandos de exclusão podem ser copiados.**

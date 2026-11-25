@@ -465,6 +465,7 @@ export function StewardEntry(
       ? createElement(StewardPanel, {
         key: 'panel',
         healthCheck,
+        historyFiles: config.historyFiles !== false,
         openSession: props.openSession,
         onClose: () => { setOpen(false) },
       })
@@ -592,6 +593,7 @@ function mountTopToolEntries(
     return createElement(StewardPanel, {
       variant: 'page',
       healthCheck: config.healthCheck !== false,
+      historyFiles: config.historyFiles !== false,
       openSession,
       onClose: closePanel,
     })
