@@ -57,6 +57,48 @@ function iconBtn(
   }, svg)
 }
 
+/** 单色 SVG 动作图标容器（stroke:currentColor，随主题）。 */
+function svgIcon(children: React.ReactNode, filled = false): ReactElement {
+  return createElement('svg', {
+    width: 14, height: 14, viewBox: '0 0 16 16',
+    fill: filled ? 'currentColor' : 'none',
+    stroke: 'currentColor', strokeWidth: 1.5,
+    strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }, children)
+}
+function iconPin(filled: boolean): ReactElement {
+  return svgIcon(createElement('path', { d: 'M8 2.5l3.5 3.5-2 1 1 4.5L8 9.7l-2.5 2.3 1-4.5-2-1z' }), filled)
+}
+function iconRename(): ReactElement {
+  return svgIcon(createElement('path', { d: 'M11 2.5l2.5 2.5L6 12.5 3 13.5l1-3z' }))
+}
+function iconClone(): ReactElement {
+  return svgIcon([
+    createElement('circle', { cx: 4.5, cy: 4, r: 1.6, key: 'a' }),
+    createElement('circle', { cx: 4.5, cy: 12, r: 1.6, key: 'b' }),
+    createElement('circle', { cx: 11.5, cy: 8, r: 1.6, key: 'c' }),
+    createElement('path', { d: 'M4.5 5.6v4.8M6.1 4h2.4a1.5 1.5 0 011.5 1.5v.9', key: 'd' }),
+  ])
+}
+function iconCopy(): ReactElement {
+  return svgIcon([
+    createElement('rect', { x: 5.5, y: 5.5, width: 8, height: 8, rx: 1.5, key: 'a' }),
+    createElement('path', { d: 'M10.5 3.5h-8v8', key: 'b' }),
+  ])
+}
+function iconFolder(): ReactElement {
+  return svgIcon(createElement('path', { d: 'M2 4.5h4l1.2 1.4H14V12H2z' }))
+}
+function iconGit(): ReactElement {
+  return svgIcon([
+    createElement('circle', { cx: 5, cy: 4, r: 1.5, key: 'a' }),
+    createElement('circle', { cx: 5, cy: 12, r: 1.5, key: 'b' }),
+    createElement('circle', { cx: 11, cy: 8, r: 1.5, key: 'c' }),
+    createElement('path', { d: 'M5 5.5v5M6.5 4H9a1.5 1.5 0 011.5 1.5v1', key: 'd' }),
+  ])
+}
+
 /** 样式（幂等注入;类名沿用 dmss_ 前缀,与搜索面板共享视觉语言）。 */
 function injectManageStyles(): () => void {
   if (typeof document === 'undefined') return () => {}
@@ -654,13 +696,13 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
             ? createElement('div', { key: 'groupActs', className: 'dmss_groupActions' }, [
                 explorerApp !== undefined
                   ? iconBtn('explorer', translate(t, 'row.explorer'),
-                      createElement('span', { style: { fontSize: '11px' } }, '📂'),
+                      iconFolder(),
                       false, '',
                       () => { handleOpenInApp(explorerApp, group.cwd) })
                   : null,
                 gitApp !== undefined
                   ? iconBtn('git', translate(t, 'row.git'),
-                      createElement('span', { style: { fontSize: '11px' } }, '🌿'),
+                      iconGit(),
                       false, '',
                       () => { handleOpenInApp(gitApp, group.cwd) })
                   : null,
@@ -684,7 +726,7 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
         }, [
           createElement('span', { key: 'line', className: 'dmss_rowTitle' }, [
             pinnedIds.has(item.sessionId)
-              ? createElement('span', { key: 'pin', className: 'dmss_pinnedIcon', 'aria-hidden': true, title: translate(t, 'row.pin') }, '📌')
+              ? createElement('span', { key: 'pin', className: 'dmss_pinnedIcon', 'aria-hidden': true, title: translate(t, 'row.pin') }, iconPin(true))
               : null,
             createElement('span', { key: 'check', className: 'dmss_check' },
               createElement('input', {
@@ -729,24 +771,24 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
           createElement('span', { key: 'meta', className: 'dmss_meta' }, [
             createElement('span', { key: 'uuid', className: 'dmss_uuid', title: item.sessionId }, item.sessionId.slice(0, 13)),
             iconBtn('copyId', translate(t, 'row.copyId'),
-              createElement('span', { style: { fontSize: '10px' } }, '⎘'),
+              iconCopy(),
               false, '',
               () => { handleCopyUUID(item.sessionId) }),
           ]),
           // 行内动作区（hover/focus 显示）
           createElement('div', { key: 'acts', className: 'dmss_rowActions', onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() }, onDoubleClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() } }, [
             iconBtn('pinBtn', translate(t, pinnedIds.has(item.sessionId) ? 'row.unpinAction' : 'row.pinAction'),
-              createElement('span', { style: { fontSize: '11px' } }, pinnedIds.has(item.sessionId) ? '📌' : '📍'),
+              iconPin(pinnedIds.has(item.sessionId)),
               !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).pin,
               translate(t, 'row.archivedHint'),
               () => { handlePin(item) }),
             iconBtn('renameBtn', translate(t, 'row.renameAction'),
-              createElement('span', { style: { fontSize: '11px' } }, '✏'),
+              iconRename(),
               !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).rename,
               translate(t, 'row.archivedHint'),
               () => { setEditing({ id: item.sessionId, draft: item.title }) }),
             iconBtn('cloneBtn', translate(t, 'row.cloneAction'),
-              createElement('span', { style: { fontSize: '11px' } }, '⎇'),
+              iconClone(),
               !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).fork,
               translate(t, 'row.archivedHint'),
               () => { handleFork(item) }),
