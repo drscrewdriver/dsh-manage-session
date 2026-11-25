@@ -1,5 +1,13 @@
 # Registro de mudanças
 
+## 2.0.21
+
+**Correção: sessões com id codificado (`im:` / `imu:`) não eram apagadas por completo — a contabilidade sumia, o diretório ficava.**
+
+- Causa: o host só remove o prefixo `session-`, mas o diretório de uma sessão `im:` é codificado em `~XXXX` (`im~003A…~0040im.wechat`); sem localizar, nada é apagado e a verificação posterior concluía “já apagado”.
+- Correção: `encodeSegment` / `decodeSegment` no host e índice de diretórios com quatro chaves (nome, sem prefixo, id decodificado, decodificado sem prefixo); `locateSessionUsage` e a busca do cache de projeção passam a casar por candidatos.
+- Bônus: títulos de sessões `im:` agora são lidos (o cache também usa nome codificado).
+
 ## 2.0.20
 
 **Comandos de limpeza passam a montar caminho absoluto automaticamente: sem `node_modules/...` fixo e sem cd para o profile.**

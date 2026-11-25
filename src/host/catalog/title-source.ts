@@ -21,7 +21,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { dirKey, projCacheRootFor } from '../history/purge.ts'
+import { dirNameCandidates, projCacheRootFor } from '../history/purge.ts'
 
 /** 标题结论的档位（`pending` 只在 catalog 响应里出现，不落 memo）。 */
 export type CatalogTitleSource = 'live' | 'cache' | 'prefix' | 'none'
@@ -119,9 +119,10 @@ function cachedTitle(record: CatalogTitleRecord, cache: ProjectionCacheFace | un
 export function titleFromProjectionCacheFile(sessionId: string, dshHome: string): string | undefined {
   if (dshHome === '') return undefined
   const root = projCacheRootFor(dshHome)
-  const names = [...new Set([`${sessionId}.json`, `${dirKey(sessionId)}.json`])]
+  // 候选包含编码名（`im~003A…`）：im: 会话的缓存文件不是原始 id。
+  const names = dirNameCandidates(sessionId)
   for (const name of names) {
-    const path = join(root, name)
+    const path = join(root, `${name}.json`)
     try {
       if (!existsSync(path)) continue
       const parsed = JSON.parse(readFileSync(path, 'utf8')) as {

@@ -101,6 +101,35 @@ export function dirKey(name: string): string {
   return name.startsWith('session-') ? name.slice('session-'.length) : name
 }
 
+/**
+ * 宿主目录名编码（`~XXXX`）：与 `session-persistence-jsonl/src/format.ts::encodeSegment` 同构。
+ *
+ * 为什么必需：`im:` / `imu:` 这类会话 id 带 `:` `@`，磁盘目录名是编码后的 `im~003A…~0040im.wechat`。
+ * 只剥 `session-` 前缀的话永远定位不到目录 —— 删除会“记账清了、目录还在”，
+ * 标题也读不到（面板显示未命名）。
+ */
+export function encodeSegment(raw: string): string {
+  let out = ''
+  for (let i = 0; i < raw.length; i += 1) {
+    const code = raw.charCodeAt(i)
+    const ch = String.fromCharCode(code)
+    if (ch !== '~' && /^[A-Za-z0-9._-]$/.test(ch)) out += ch
+    else out += `~${code.toString(16).toUpperCase().padStart(4, '0')}`
+  }
+  return out
+}
+
+/** 目录名解码回会话 id（编码里 `~` 不可能字面出现，故可逆）。 */
+export function decodeSegment(name: string): string {
+  return name.replace(/~([0-9A-Fa-f]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+}
+
+/** 一个会话 id 在盘上可能的目录名（原样 / 剥前缀 / 编码 / 编码后剥前缀）。 */
+export function dirNameCandidates(sessionId: string): string[] {
+  const key = dirKey(sessionId)
+  return [...new Set([sessionId, key, encodeSegment(sessionId), encodeSegment(key)])]
+}
+
 /** 是不是目录（读不到就当不是）。 */
 function isDir(path: string): boolean {
   try {
@@ -127,10 +156,15 @@ export function indexSessionDirs(sessionsRoot: string): Map<string, string> {
     for (const name of readdirSync(wsDir)) {
       const entry = join(wsDir, name)
       if (!isDir(entry)) continue
-      const key = dirKey(name)
-      const existing = map.get(key)
-      const prefer = name.startsWith('session-') && existing !== undefined && !basename(existing).startsWith('session-')
-      if (existing === undefined || prefer) map.set(key, entry)
+      // 同一目录注册多个键：原名 / 剥前缀名 / 解码后的 id（im: 会话）/ 解码后剥前缀。
+      // 这样调用方无论拿原始 id 还是目录名都能命中。
+      const decoded = name.startsWith('session-') ? name : decodeSegment(name)
+      const keys = new Set([name, dirKey(name), decoded, dirKey(decoded)])
+      for (const key of keys) {
+        const existing = map.get(key)
+        const prefer = name.startsWith('session-') && existing !== undefined && !basename(existing).startsWith('session-')
+        if (existing === undefined || prefer) map.set(key, entry)
+      }
     }
   }
   return map
@@ -174,7 +208,11 @@ export function locateSessionUsage(ids: readonly string[], dshHome: string): Map
   for (const sessionId of ids) {
     const key = dirKey(sessionId)
     const usage: StewardSessionUsage = { sessionId, bytes: 0, backupBytes: 0, backupCount: 0, cacheBytes: 0 }
-    const dir = dirs.get(key)
+    let dir: string | undefined
+    for (const candidate of dirNameCandidates(sessionId)) {
+      const hit = dirs.get(candidate)
+      if (hit !== undefined) { dir = hit; break }
+    }
     if (dir !== undefined) {
       usage.dir = dir
       usage.bytes = dirSize(dir)
@@ -183,9 +221,9 @@ export function locateSessionUsage(ids: readonly string[], dshHome: string): Map
       usage.backupBytes = backups.bytes
       usage.backupCount = backups.files.length
     }
-    // 缓存文件名可能带前缀也可能不带 —— 两个候选都试。
-    for (const name of [`${sessionId}.json`, `${key}.json`]) {
-      const candidate = join(cacheRoot, name)
+    // 缓存文件名可能带前缀也可能不带，且 im: 会话是编码名 —— 候选全试。
+    for (const name of dirNameCandidates(sessionId)) {
+      const candidate = join(cacheRoot, `${name}.json`)
       if (existsSync(candidate)) {
         usage.cacheFile = candidate
         try {
