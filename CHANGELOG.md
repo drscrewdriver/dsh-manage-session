@@ -13,6 +13,7 @@
 - 面板改名成功后改为**重取列表**（不再只改本地数组），保证显示与磁盘一致。
 - 新增 `ROW_ACTION_METHODS`：行内动作只受总开关 `enabled` 约束，关掉历史/体检子域不影响改名。
 - 新增 `tests/session-rename.spec.ts`（5 条）：宿主调用形状 / **memo 失效** / 服务缺席可识别降级 / 宿主抛错不冒泡 / 缺 sessionId 零调用。
+- 新增 `tests/session-rename-route.spec.ts`（5 条）：路由派发、开关语义（关历史子域仍可改名）、payload 校验、错误码透传。
 
 ## 2.0.22
 
