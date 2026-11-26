@@ -16,7 +16,7 @@
 
 > Extension DeepSeek Harness (DSH) maintenue par la communauté, non officielle.
 
-Ce document décrit **2.0.24-rc.0**. Voir le [journal](CHANGELOG.md) pour les changements publiés.
+Ce document décrit **2.0.24**. Voir le [journal](CHANGELOG.md) pour les changements publiés.
 
 ## Aperçu des fonctions
 
