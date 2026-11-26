@@ -303,6 +303,17 @@ export const HISTORY_METHODS = [
   'session-tombstones',
   'session-tombstone-forget',
 ] as const
+/**
+ * 行内动作方法（不经 history/health 子域开关管：它们是面板基本操作，
+ * 关掉历史文件子域后仍必须能改名/删除）。
+ *
+ * `session-rename` 为什么必须有：客户端旧路径 `sessions.using(id).binding.session.rename()`
+ * 要**打开会话历史**才拿得到 binding（重且脆），而且成功后宿主 catalog 的标题 memo
+ * （5 min TTL，见 host/catalog/title-source.ts）不失效 —— 面板任何重取都会把改名
+ * 覆盖回旧标题，用户看到的就是「改完又变回去」。这里直连宿主 durable 通道
+ * `sessionController.session.rename()`，并在成功后主动失效 memo。
+ */
+export const ROW_ACTION_METHODS = ['session-rename'] as const
 export const HEALTH_METHODS = [
   'session-health-status',
   'session-health-scan',
@@ -314,6 +325,8 @@ export const HEALTH_METHODS = [
 /** 依据开关判定某方法是否启用。 */
 export function methodEnabled(method: string, config: Required<StewardConfig>): boolean {
   if (method === 'session-catalog' || method === 'session-catalog-stream') return config.enabled !== false
+  // 行内动作只受总开关约束：关掉历史/体检子域不该让面板失去改名能力。
+  if ((ROW_ACTION_METHODS as readonly string[]).includes(method)) return config.enabled !== false
   if ((HISTORY_METHODS as readonly string[]).includes(method)) return config.historyFiles !== false
   if ((HEALTH_METHODS as readonly string[]).includes(method)) return config.healthCheck !== false
   return false
@@ -660,6 +673,67 @@ async function forgetLiveSession(runtime: StewardRuntime, sessionId: string): Pr
   return true
 }
 
+/**
+ * 宿主 `sessionController` 的 rename 面（结构化镜像：只取用到的那一个方法）。
+ *
+ * 走的是宿主 durable 通道（`sessionTitle.rename` → 追加 `session/title` 事件），
+ * 不打开会话历史、不依赖客户端 `sessions.using()` 的 retain 流程。
+ */
+interface SessionControllerFace {
+  session?: {
+    rename?: (request: { sessionId: string; title: string }) => Promise<unknown>
+  }
+}
+
+/** 把 remote 失败对象折成一句话（错误码优先，便于调用方分辨「服务缺席」）。 */
+function remoteErrorMessage(err: unknown): { code: string; message: string } {
+  if (err !== null && typeof err === 'object') {
+    const record = err as { code?: unknown; message?: unknown }
+    const code = typeof record.code === 'string' ? record.code : ''
+    const message = typeof record.message === 'string' ? record.message : ''
+    if (code !== '' || message !== '') return { code, message: message === '' ? code : message }
+  }
+  return { code: '', message: String(err instanceof Error ? err.message : err) }
+}
+
+/**
+ * 改名（host 侧真源）：`sessionController.session.rename({sessionId, title})`。
+ *
+ * 成功后**必须**失效本插件标题 memo —— 否则面板 5 分钟内任何重取都拿回旧标题，
+ * 表现就是「改名存不住」。这是本次修复的核心一行。
+ * @param runtime - 运行时依赖（需要 `ctx` 取宿主服务）。
+ * @param payload - `{sessionId, title}`。
+ */
+export async function renameSessionViaHost(runtime: StewardRuntime, payload: unknown): Promise<unknown> {
+  const request = (payload ?? {}) as { sessionId?: unknown; title?: unknown }
+  const sessionId = typeof request.sessionId === 'string' ? request.sessionId.trim() : ''
+  const title = typeof request.title === 'string' ? request.title : ''
+  if (sessionId === '') return { ok: false, error: '缺少 sessionId' }
+  if (title.trim() === '') return { ok: false, error: '名称不能为空' }
+
+  const controller = runtime.ctx?.get('sessionController') as SessionControllerFace | undefined
+  const rename = controller?.session?.rename
+  if (typeof rename !== 'function') {
+    // 老宿主（<0.1.7 线）没有这个服务：把「服务缺席」作为可识别错误码交给客户端降级。
+    return { ok: false, code: 'service-unavailable', error: '宿主未提供 sessionController.session.rename' }
+  }
+  try {
+    const result = await rename.call(controller?.session, { sessionId, title })
+    const value = (result ?? {}) as { title?: unknown; seq?: unknown }
+    const accepted = typeof value.title === 'string' ? value.title : title.trim()
+    runtime.titles?.invalidate([sessionId])
+    return {
+      ok: true,
+      sessionId,
+      title: accepted,
+      ...(typeof value.seq === 'number' ? { seq: value.seq } : {}),
+    }
+  } catch (err) {
+    const { code, message } = remoteErrorMessage(err)
+    return { ok: false, ...(code === '' ? {} : { code }), error: message }
+  }
+}
+
 /** 收藏文件候选（与管家其余域同一 dshHome 纪律）。 */
 function favoritesPathsFor(dshHome: string): string[] {
   return [join(dshHome, 'storages', 'manage-session-favorites.json')]
@@ -712,7 +786,7 @@ export async function handleMethod(
   // 设置桥方法不受子域闸管——关掉 enabled/historyFiles/healthCheck 后仍必须
   // 能读配置（否则卡片永远读不到「把它打开」的开关）。
   const settingsMethods = method === 'settings-describe' || method === 'settings-mutate'
-  const known = [...HISTORY_METHODS, ...HEALTH_METHODS, 'session-catalog', 'session-catalog-stream', 'settings-describe', 'settings-mutate'] as readonly string[]
+  const known = [...ROW_ACTION_METHODS, ...HISTORY_METHODS, ...HEALTH_METHODS, 'session-catalog', 'session-catalog-stream', 'settings-describe', 'settings-mutate'] as readonly string[]
   if (!known.includes(method)) {
     return { ok: false, error: `未知的 manage-session API 方法 "${method}"` }
   }
@@ -732,6 +806,9 @@ export async function handleMethod(
     return await settingsMutate(state, payload)
   }
 
+  if (method === 'session-rename') {
+    return await renameSessionViaHost(runtime, payload)
+  }
   if (method === 'session-history-list') {
     return await listHistory(runtime.registry, undefined, storagePathsFor(runtime.dshHome), runtime.dshHome)
   }

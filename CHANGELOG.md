@@ -1,5 +1,19 @@
 # Changelog / 变更日志
 
+## 2.0.23
+
+**修复：改名「存不住」——改完刷新又变回旧标题。**
+
+- 根因三条，全在这一次修掉：
+  1. 旧路径走客户端 `sessions.using(id).binding.session.rename()`，要先 retain 并**打开会话历史**才拿得到 binding；
+  2. 宿主 `sessionTitle.rename` 是 durable 的（追加 `session/title` 事件），但本插件 host 半身的标题 memo（5 min TTL）**不知道要失效**；
+  3. 客户端只做乐观 `setSessions`，任何一次重取都被 ② 的旧 memo 覆盖 —— 用户看到的就是「改完又变回去」。
+- 修法：host 半身新增 `session-rename` 方法，直连宿主 durable 通道 `sessionController.session.rename({sessionId,title})`（不打开会话历史），成功后**主动 `titles.invalidate([id])`** 并回传宿主接受的标题与 `seq`。
+- 客户端 `renameViaHostRoute` 优先走该路由；仅在 `service-unavailable`（老宿主无 `sessionController`）或 `route-unavailable`（老 host 半身无此路由）时降级到旧路径，保证旧线仍能改名。
+- 面板改名成功后改为**重取列表**（不再只改本地数组），保证显示与磁盘一致。
+- 新增 `ROW_ACTION_METHODS`：行内动作只受总开关 `enabled` 约束，关掉历史/体检子域不影响改名。
+- 新增 `tests/session-rename.spec.ts`（5 条）：宿主调用形状 / **memo 失效** / 服务缺席可识别降级 / 宿主抛错不冒泡 / 缺 sessionId 零调用。
+
 ## 2.0.22
 
 **会话管理台单会话动作 + 官方打开能力。**

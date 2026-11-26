@@ -2,11 +2,12 @@
  * 会话动作适配层（纯函数 + 注入 getter，无 React 依赖）。
  *
  * 读面：从官方客户端服务快照提取置顶/归档/live 集合；能力判定；置顶优先排序。
- * 写面：置顶、改名、fork 均经官方服务，不自己写会话文件。
+ * 写面：改名优先走 host durable 路由（`session-rename`），置顶与 fork 经官方服务。
  *
  * 约束：所有 get() 包 try/catch，异常转 {ok:false,error}，绝不抛到 React。
  * 零 value-import 官方包：只经注入的 getter 取结构化镜像（与硬约束一致）。
  */
+import { callHostAny } from './host-api.ts'
 
 /** 服务 getter 签名（由 apply 侧传入 `name => ctx.get(name)`）。 */
 export type ServiceGetter = (name: string) => unknown
@@ -148,7 +149,15 @@ export async function togglePin(
 
 /**
  * 重命名会话（trim 空名拒绝）。
- * 调用 sessions.using(id, {source:'workspaceOperation'}, r => r.binding.session.rename(title))。
+ *
+ * **优先走 host 半身的 `session-rename`**（`sessionController.session.rename`，
+ * 不打开会话历史、成功后宿主侧标题 memo 会失效）。之所以不再默认走
+ * `sessions.using(...).binding.session.rename()`：那条路要 retain 并打开会话历史，
+ * 且改名后本插件 host 的标题 memo（5 min TTL）不知道要失效 —— 面板任何重取都会
+ * 把标题覆盖回旧值，用户体感就是「改完又变回去」。
+ *
+ * 老宿主（无 `sessionController`）返回 `service-unavailable`，此时降级到旧路径，
+ * 保证旧线仍能改名（代价是那个已知的 memo 时序问题）。
  */
 export async function renameSession(
   get: ServiceGetter,
@@ -159,6 +168,47 @@ export async function renameSession(
   if (trimmed === '') {
     return { ok: false, error: '名称不能为空' }
   }
+  const viaHost = await renameViaHostRoute(id, trimmed)
+  if (viaHost.ok) return viaHost
+  if (viaHost.code !== 'service-unavailable' && viaHost.code !== 'route-unavailable') return viaHost
+  return renameViaClientService(get, id, trimmed)
+}
+
+/**
+ * 经本插件 host 路由改名。
+ *
+ * 可降级的两类失败（返回 `service-unavailable` / `route-unavailable`）：
+ * - 宿主没有 `sessionController`（老宿主，host 方法自己回 `service-unavailable`）；
+ * - 路由本身不可达（老版本 host 半身没这个方法 → HTTP 4xx；或 fetch 层异常）。
+ * 其它失败（宿主明确拒绝，如标题非法）不降级 —— 降级只会把同一个错误再抛一次。
+ * @param id - 会话 id。
+ * @param title - 已 trim 的标题。
+ * @returns 动作结果；`code` 供调用方判断能否降级。
+ */
+async function renameViaHostRoute(id: string, title: string): Promise<SessionActionResult & { code?: string }> {
+  const res = await callHostAny<{ title?: string; seq?: number; code?: string }>('session-rename', { sessionId: id, title })
+  if (res.ok === true) {
+    return { ok: true, ...(typeof res.title === 'string' ? { title: res.title } : {}) } as SessionActionResult & { code?: string }
+  }
+  const code = typeof res.code === 'string' && res.code !== '' ? res.code : ''
+  if (code !== '') return { ok: false, error: res.error ?? '重命名失败', code }
+  const error = res.error ?? '重命名失败'
+  // 无宿主错误码 = 根本没走到 host 方法体：HTTP 4xx/5xx、fetch 层异常，
+  // 或相对 URL 无法解析（非浏览器宿主 / node 单测环境）。
+  if (/^HTTP \d+$/i.test(error) || /fetch|network|parse URL|invalid URL/i.test(error)) {
+    return { ok: false, error, code: 'route-unavailable' }
+  }
+  return { ok: false, error }
+}
+
+/**
+ * 旧路径（老宿主降级）：`sessions.using(id, {source:'workspaceOperation'}, r => r.binding.session.rename(title))`。
+ */
+async function renameViaClientService(
+  get: ServiceGetter,
+  id: string,
+  trimmed: string,
+): Promise<SessionActionResult> {
   try {
     const sessions = get('sessions') as {
       using?: (

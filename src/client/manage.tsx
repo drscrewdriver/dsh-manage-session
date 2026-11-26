@@ -531,10 +531,10 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
   const handleRename = (item: HostSessionItem, draft: string): void => {
     void renameSession(get, item.sessionId, draft).then((res) => {
       if (res.ok) {
-        // 乐观更新本地标题
-        setSessions(prev => prev === null ? prev : prev.map(r =>
-          r.sessionId === item.sessionId ? { ...r, title: draft.trim() } : r))
         setEditing(null)
+        // 不再只做乐观更新：宿主侧 memo 已在 host 半身失效，重取才是唯一可信来源。
+        // （旧实现直接改本地数组，任何一次重取都会把旧标题带回来 —— 那就是「改名存不住」。）
+        setSessions(null)
         showToast(translate(t, 'row.rename'), true)
       } else {
         showToast(res.error ?? translate(t, 'row.renameFailed'), false)
