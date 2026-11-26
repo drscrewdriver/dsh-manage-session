@@ -13,6 +13,7 @@
 import { createElement, useState, useSyncExternalStore, type JSX } from 'react'
 import { DEFAULT_CONFIG, type StewardConfig } from '../config.ts'
 import { translate, type LocaleKey } from './locales.ts'
+import { mountStarRow } from './star-row-copy.ts'
 
 /** 卡片字典面。 */
 export type CardTranslate = (key: LocaleKey, params?: Record<string, unknown>) => string
@@ -91,6 +92,11 @@ function Header(props: { t?: CardTranslate; open: boolean; onToggle: () => void 
   ])
 }
 
+/** 面板常驻 star 快车道：挂载即建行，React 只负责给容器。 */
+const mountStarRef = (node: HTMLDivElement | null): void => {
+  if (node && !node.firstChild) node.appendChild(mountStarRow())
+}
+
 /** 插件设置卡主体（抽屉）。默认展开，family 设置节内直接呈现完整面板。 */
 export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element {
   const snapshot = useSyncExternalStore(
@@ -149,6 +155,10 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
     className: `dms_setCard${open ? ' dms_setCardOpen' : ''}`,
   }, [
     createElement(Header, { key: 'head', t, open, onToggle: () => { setOpen(current => !current) } }),
-    open && createElement('div', { key: 'body', className: 'dms_setBody' }, rows),
+    open && createElement('div', { key: 'body', className: 'dms_setBody' }, [
+      ...rows,
+      // star 快车道（_tools/star-row 生成的常量副本）：链接常驻，话术可点掉。
+      createElement('div', { key: 'star', className: 'dms_setStar', ref: mountStarRef }),
+    ]),
   ])
 }

@@ -23,6 +23,13 @@
 - 顺带修好：`im:` 会话的标题读取（缓存文件名也是编码名，过去必然 miss）。
 - 实测：本机墓碑区 9 条里有 2 条正是这类（`E:\test\doresearch` 的两个微信 DM），升级后会在「清理」页签显示为待清理，可一键重试删除。
 
+**设置卡新增面板常驻 Star 快车道（求星不打扰）。**
+
+- 插件设置卡抽屉底部一行：GitHub 单色图标 + `drscrewdriver/dsh-manage-session` 链接（新标签页打开）｜ 一句求星话术 ｜ `★ 留颗 Star` 钮。
+- 点钮写入 `localStorage dsh.star.manage-session.dismissed=1`：只收话术与按钮，**仓库链接常驻**；刷新/升级都不复活话术。
+- 话术 10 语随宿主 `documentElement.lang` 前缀切换；无弹窗、无浮层、无 toast。
+- 行组件由 `_tools/star-row` 单源生成（`sync.mjs --check` 防漂移），本包 `src/client/star-row-copy.ts` 只是生成副本。
+
 ## 2.0.20
 
 **清理命令改为绝对路径自适应拼接：不再写死 `node_modules/...`，也不必先 cd 到 profile。**
