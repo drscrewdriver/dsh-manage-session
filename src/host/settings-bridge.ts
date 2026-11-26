@@ -44,6 +44,7 @@ const StewardNsSchema = z.object({
   historyFiles: z.boolean().default(true),
   healthCheck: z.boolean().default(true),
   directDelete: z.boolean().default(false),
+  columns: z.number().default(3),
 })
 
 /** settings.get 返回值是否像一份文档（老宿主对未写过的 ns 可能回 undefined）。 */
@@ -115,6 +116,14 @@ function asBoolean(v: unknown): FieldVerdict {
   return typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, error: '期望布尔值' }
 }
 
+/** 列数校验：1–6 的整数（越界/非整数一律拒绝，不静默夹值）。 */
+function asColumns(v: unknown): FieldVerdict {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 6) {
+    return { ok: false, error: '期望 1–6 的整数' }
+  }
+  return { ok: true, value: v }
+}
+
 /** 各命名空间允许写入的字段与校验（未列出的字段一律拒绝——桥不是任意写缝）。 */
 const FIELD_VALIDATORS: Record<string, Record<string, (v: unknown) => FieldVerdict>> = {
   [STEWARD_SETTINGS_NAMESPACE]: {
@@ -122,6 +131,7 @@ const FIELD_VALIDATORS: Record<string, Record<string, (v: unknown) => FieldVerdi
     historyFiles: asBoolean,
     healthCheck: asBoolean,
     directDelete: asBoolean,
+    columns: asColumns,
   },
 }
 

@@ -112,6 +112,8 @@ export const zh = {
   'health.ago.minutes': '{n} 分钟前',
   'health.ago.hours': '{n} 小时前',
   'health.ago.days': '{n} 天前',
+  'card.columns': '每行会话数',
+  'card.columns.desc': '1 列用大卡显示：标题更大，信息与动作常显。',
 } as const
 
 /** English dictionary (same keys). */
@@ -212,6 +214,8 @@ export const en: Record<LocaleKey, string> = {
   'health.ago.minutes': '{n} min ago',
   'health.ago.hours': '{n} h ago',
   'health.ago.days': '{n} d ago',
+  'card.columns': 'Sessions per row',
+  'card.columns.desc': '1 column uses the large-card layout: bigger title, meta and actions always visible.',
 }
 
 /** 日本語辞書（zh のキー集合に対し完全性を検査）。 */
@@ -304,6 +308,8 @@ export const ja: Partial<Record<LocaleKey, string>> = {
   'health.ago.minutes': '{n} 分前',
   'health.ago.hours': '{n} 時間前',
   'health.ago.days': '{n} 日前',
+  'card.columns': '1 行あたりのセッション数',
+  'card.columns.desc': '1 列は大きいカード表示：タイトル拡大、情報と操作を常時表示。',
 }
 
 /** 한국어 사전 (zh 키 집합에 대해 완전성 검사). */
@@ -396,6 +402,8 @@ export const ko: Partial<Record<LocaleKey, string>> = {
   'health.ago.minutes': '{n}분 전',
   'health.ago.hours': '{n}시간 전',
   'health.ago.days': '{n}일 전',
+  'card.columns': '행당 세션 수',
+  'card.columns.desc': '1열은 큰 카드로 표시: 제목 확대, 정보와 동작 상시 표시.',
 }
 
 /** Dictionnaire français, vérifié complet contre le jeu de clés zh. */
@@ -488,6 +496,8 @@ export const fr: Partial<Record<LocaleKey, string>> = {
   'health.ago.minutes': 'il y a {n} min',
   'health.ago.hours': 'il y a {n} h',
   'health.ago.days': 'il y a {n} j',
+  'card.columns': 'Sessions par ligne',
+  'card.columns.desc': '1 colonne = grande carte : titre plus grand, infos et actions toujours visibles.',
 }
 
 /** Deutsches Wörterbuch, vollständig gegen den zh-Schlüsselsatz geprüft. */
@@ -580,6 +590,8 @@ export const de: Partial<Record<LocaleKey, string>> = {
   'health.ago.minutes': 'vor {n} Min',
   'health.ago.hours': 'vor {n} Std',
   'health.ago.days': 'vor {n} Tg',
+  'card.columns': 'Sitzungen pro Zeile',
+  'card.columns.desc': '1 Spalte = große Karte: größerer Titel, Infos und Aktionen immer sichtbar.',
 }
 
 /** Dizionario italiano, verificato completo contro l'insieme di chiavi zh. */
@@ -672,6 +684,8 @@ export const it: Partial<Record<LocaleKey, string>> = {
   'health.ago.minutes': '{n} min fa',
   'health.ago.hours': '{n} h fa',
   'health.ago.days': '{n} g fa',
+  'card.columns': 'Sessioni per riga',
+  'card.columns.desc': '1 colonna = scheda grande: titolo più grande, info e azioni sempre visibili.',
 }
 
 /** Русский словарь, проверен на полноту по набору ключей zh. */
@@ -764,6 +778,8 @@ export const ru: Partial<Record<LocaleKey, string>> = {
   'health.ago.minutes': '{n} мин назад',
   'health.ago.hours': '{n} ч назад',
   'health.ago.days': '{n} дн назад',
+  'card.columns': 'Сессий в строке',
+  'card.columns.desc': '1 колонка = крупная карточка: крупнее заголовок, информация и действия всегда видны.',
 }
 
 /** Diccionario español, verificado completo contra el conjunto de claves zh. */
@@ -856,6 +872,8 @@ export const es: Partial<Record<LocaleKey, string>> = {
   'health.ago.minutes': 'hace {n} min',
   'health.ago.hours': 'hace {n} h',
   'health.ago.days': 'hace {n} d',
+  'card.columns': 'Sesiones por fila',
+  'card.columns.desc': '1 columna = tarjeta grande: título mayor, información y acciones siempre visibles.',
 }
 
 export const pt: Partial<Record<LocaleKey, string>> = {
@@ -947,6 +965,8 @@ export const pt: Partial<Record<LocaleKey, string>> = {
   "health.ago.minutes": "há {n} min",
   "health.ago.hours": "há {n} h",
   "health.ago.days": "há {n} d",
+  'card.columns': 'Sessões por linha',
+  'card.columns.desc': '1 coluna = cartão grande: título maior, informações e ações sempre visíveis.',
 }
 
 

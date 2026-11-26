@@ -59,7 +59,7 @@ describe('session-history-archive（批量归档写侧）', () => {
 function memoryRuntime(archived: string[]): { runtime: StewardRuntime } {
   const set = [...archived]
   const runtime: StewardRuntime = {
-    config: () => ({ enabled: true, historyFiles: true, healthCheck: true, search: true, directDelete: false }),
+    config: () => ({ enabled: true, historyFiles: true, healthCheck: true, search: true, directDelete: false, columns: 3 }),
     dshHome: join(tmpdir(), 'memory-rt'),
     registry: () => ({
       get archivedSessionIds() { return set },
@@ -103,7 +103,7 @@ describe('内存路径（官方 registry API,免重启）', () => {
     mkdirSync(home, { recursive: true })
     seedHome(home, ['session-a'])
     const runtime: StewardRuntime = {
-      config: () => ({ enabled: true, historyFiles: true, healthCheck: true, search: true, directDelete: false }),
+      config: () => ({ enabled: true, historyFiles: true, healthCheck: true, search: true, directDelete: false, columns: 3 }),
       dshHome: home,
       registry: () => ({ archivedSessionIds: ['session-a'] }),
       projectionStateFor: () => undefined,

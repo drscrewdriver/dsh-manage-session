@@ -23,6 +23,13 @@ export interface StewardConfig {
    * **缺省关**——破坏性入口不默认铺开；管理端批量删除不受本开关限制。
    */
   directDelete?: boolean
+  /**
+   * 每行显示几个会话（1–6，缺省 3 = 升级前观感）。
+   *
+   * 存的是**用户意图**；窄窗口下由 `resolveColumns` 降档（<760px 强制 1 列，
+   * <1180px 最多 2 列），所以这里不做范围外的语义约束。
+   */
+  columns?: number
 }
 
 /** 缺省值。 */
@@ -31,6 +38,7 @@ export const DEFAULT_CONFIG: Required<StewardConfig> = {
   historyFiles: true,
   healthCheck: true,
   directDelete: false,
+  columns: 3,
 }
 
 /** host 半身注册的设置命名空间（与 src/index.ts 保持一致）。 */

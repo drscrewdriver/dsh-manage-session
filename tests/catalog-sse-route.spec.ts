@@ -43,7 +43,7 @@ function makeHome(): { home: string; ids: string[] } {
 
 function runtimeFor(home: string, ids: readonly string[]): StewardRuntime {
   return {
-    config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false }),
+    config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false, columns: 3 }),
     dshHome: home,
     // 宿主三服务全缺席：标题只能靠分帧流（最坏场景）。
     ctx: { get: () => undefined },

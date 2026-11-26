@@ -32,7 +32,7 @@ function tempHome(): string {
 
 function baseRuntime(overrides: Partial<StewardRuntime>, home: string): StewardRuntime {
   return {
-    config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false }),
+    config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false, columns: 3 }),
     dshHome: home,
     projectionStateFor: () => undefined,
     attribute: () => undefined,

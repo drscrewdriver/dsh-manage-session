@@ -41,7 +41,7 @@ describe('purge 内存路径（registry.deleteSession,免重启）', () => {
   it('逐 id 调 deleteSession,requiresRestart=false,索引联动只含成功 id', async () => {
     const deleted: string[] = []
     const runtime: StewardRuntime = {
-      config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false }),
+      config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false, columns: 3 }),
       dshHome: join(tmpdir(), 'purge-mem'),
       // 墓碑台账隔离到临时目录：缺省会回退真实 ~/.dsh-manage-session-index（测试污染）。
       registry: () => ({

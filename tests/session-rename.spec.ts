@@ -24,7 +24,7 @@ function runtimeWith(
 ): StewardRuntime {
   const titles = withTitles ? new TitleMemo() : undefined
   return {
-    config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false }),
+    config: () => ({ enabled: true, historyFiles: true, healthCheck: true, directDelete: false, columns: 3 }),
     dshHome: 'C:/tmp/dsh-test',
     ctx: {
       get(name: string) {

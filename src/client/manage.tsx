@@ -10,7 +10,8 @@
  * 侧栏完全生效——宿主半在成功路径上已同步联动索引）。
  */
 import { createElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem, type OpenSessionOutcome } from './host-api.ts'
+import { callHostAny, callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem, type OpenSessionOutcome } from './host-api.ts'
+import { DEFAULT_COLUMNS, resolveColumns, type ColumnChoice } from './columns.ts'
 import { translate, type LocaleKey } from './manage-locales.ts'
 import { matchesCatalogText } from './session-filter.ts'
 import {
@@ -98,6 +99,20 @@ function iconGit(): ReactElement {
     createElement('path', { d: 'M5 5.5v5M6.5 4H9a1.5 1.5 0 011.5 1.5v1', key: 'd' }),
   ])
 }
+/** 移动到工区：文件夹 + 右箭头。 */
+function iconMove(): ReactElement {
+  return svgIcon([
+    createElement('path', { d: 'M2 4.5h4l1.2 1.4H14V12H2z', key: 'a' }),
+    createElement('path', { d: 'M6.5 8.4h3.4M8.6 7l1.4 1.4-1.4 1.4', key: 'b' }),
+  ])
+}
+/** 删除：垃圾桶。 */
+function iconTrash(): ReactElement {
+  return svgIcon([
+    createElement('path', { d: 'M3 4.5h10M6.5 4.5V3h3v1.5', key: 'a' }),
+    createElement('path', { d: 'M4.5 4.5l.7 8h5.6l.7-8', key: 'b' }),
+  ])
+}
 
 /** 样式（幂等注入;类名沿用 dmss_ 前缀,与搜索面板共享视觉语言）。 */
 function injectManageStyles(): () => void {
@@ -114,9 +129,15 @@ function injectManageStyles(): () => void {
 .dmss_groupTitle{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary)}
 .dmss_groupCount{flex:none;color:var(--dsw-alias-label-caption);font-size:11px;font-variant-numeric:tabular-nums}
 /* 会话卡片网格：一行三张（1/3 宽），窄屏降两列 / 单列。 */
-.dmss_grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:8px}
-@media (max-width:1180px){.dmss_grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:760px){.dmss_grid{grid-template-columns:minmax(0,1fr)}}
+/* 列数由 JS resolveColumns 算出后写成 --dmss-cols（repeat() 只吃整数，没法用 min(var(),2)）。
+   断点降档也在那里裁决，所以这里不再要媒体查询。 */
+.dmss_grid{display:grid;grid-template-columns:repeat(var(--dmss-cols,3),minmax(0,1fr));gap:8px;padding:8px}
+/* 1 列 = 大卡：标题放大、信息与动作常显（用户定标的「单独优化」形态）。 */
+.dmss_grid.dmss_gridOne .dmss_titleText{font-size:14px;line-height:20px;font-weight:600}
+.dmss_grid.dmss_gridOne .dmss_row{min-height:52px;padding:11px 13px;gap:5px}
+.dmss_grid.dmss_gridOne .dmss_meta{font-size:11.5px}
+.dmss_grid.dmss_gridOne .dmss_rowActions{opacity:1;justify-content:flex-end;gap:5px}
+.dmss_grid.dmss_gridOne .dmss_iconBtn{width:24px;height:24px}
 /* 卡片本体：标题行 + 工作区元信息两行，整块可点（打开会话）。 */
 .dmss_row{box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0;height:auto;margin:0;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.05));color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer;user-select:none;transition:border-color .14s ease-out,background-color .14s ease-out}
 .dmss_row:hover{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-interactive-bg-hover)}
@@ -154,6 +175,17 @@ function injectManageStyles(): () => void {
 .dmss_rowActions{display:flex;align-items:center;gap:3px;opacity:0;transition:opacity .12s;margin-top:2px}
 .dmss_row:hover .dmss_rowActions,.dmss_row:focus-within .dmss_rowActions{opacity:1}
 @media (hover:none){.dmss_rowActions{opacity:1}}
+.dmss_moveMask{position:absolute;inset:0;background:rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;z-index:20}
+.dmss_moveCard{min-width:320px;max-width:min(520px,92%);max-height:70%;display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:14px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary);box-shadow:0 18px 48px rgba(0,0,0,.28)}
+.dmss_moveTitle{font-size:13px;font-weight:600;line-height:20px}
+.dmss_moveSub{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);word-break:break-all}
+.dmss_moveList{display:flex;flex-direction:column;gap:6px;overflow:auto;min-height:0;padding:2px}
+.dmss_moveRow{display:flex;flex-direction:column;gap:2px;text-align:left;padding:8px 10px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:inherit;cursor:pointer;font:inherit}
+.dmss_moveRow:hover{border-color:var(--dsw-alias-state-business-primary)}
+.dmss_moveRow:disabled{opacity:.45;cursor:not-allowed}
+.dmss_moveRowTitle{font-size:12px;line-height:18px;font-weight:500}
+.dmss_moveRowPath{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);word-break:break-all}
+.dmss_moveCancel{align-self:flex-end;height:26px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:inherit;cursor:pointer;border-radius:8px;padding:0 12px;font-size:12px}
 .dmss_iconBtn{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:none;border-radius:5px;background:transparent;cursor:pointer;padding:0;color:var(--dsw-alias-label-tertiary);flex:none}
 .dmss_iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dmss_iconBtn:disabled{cursor:not-allowed;opacity:.4}
@@ -250,6 +282,19 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
 
   // ── 行内改名状态 ──────────────────────────────────────────────────────────
   const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null)
+  /** 有效列数（设置值 × 容器宽度，由 resolveColumns 裁决）。 */
+  const [cols, setCols] = useState<ColumnChoice>(DEFAULT_COLUMNS)
+  /** 用户设置里的每行个数（来自设置面 `columns`）。 */
+  const [colSetting, setColSetting] = useState<number>(DEFAULT_COLUMNS)
+  const gridHostRef = useRef<HTMLDivElement | null>(null)
+  /** 移动目标选择浮层（null = 关闭）。 */
+  const [movePicker, setMovePicker] = useState<{
+    sessionId: string
+    title: string
+    rows: { id: string; title: string; path: string }[]
+  } | null>(null)
+  /** 行内删除的两步确认（存正等待第二次点击的会话 id）。 */
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // ── 就地提示（成功/失败 3s 自动消失） ────────────────────────────────────
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null)
@@ -408,6 +453,33 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
     })
   }, [workspaceFilter])
 
+  // 列设置：读一次设置面（`session-health-status` 的 switches 里带 columns；
+  // 老宿主没有该字段时回落缺省 3）。
+  useEffect(() => {
+    let alive = true
+    void callSteward<{ switches?: Record<string, unknown> }>('session-health-status', {}).then((res) => {
+      if (!alive || !res.ok) return
+      const raw = res.switches?.columns
+      if (typeof raw === 'number') setColSetting(raw)
+    }).catch(() => { /* 读不到就用缺省 */ })
+    return () => { alive = false }
+  }, [])
+
+  // 宽度变化 → 重算有效列数（窄屏强制 1 列，中屏最多 2 列）。
+  useEffect(() => {
+    const host = gridHostRef.current
+    if (host === null || typeof ResizeObserver === 'undefined') {
+      setCols(resolveColumns(colSetting, typeof window === 'undefined' ? Number.NaN : window.innerWidth))
+      return
+    }
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? host.clientWidth
+      setCols(resolveColumns(colSetting, width))
+    })
+    observer.observe(host)
+    return () => { observer.disconnect() }
+  }, [colSetting])
+
   /** 行标题：`pending` 先占位（会被流覆盖），`none` 就是真的无标题。 */
   const rowTitle = (item: HostSessionItem): string => {
     if (item.title !== '') return item.title
@@ -542,8 +614,72 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
     })
   }
 
-  const handleFork = (item: HostSessionItem): void => {
-    void forkSession(get, item.sessionId).then((res) => {
+  // ── 移动工作区（Phase2）─────────────────────────────────────────────────
+
+  /**
+   * 打开移动目标选择浮层：拉一次工区表（`session-workspaces-list`）。
+   * 会话已在别的工区 → 该工区标灰（移过去等于原地不动）。
+   */
+  const openMovePicker = (item: HostSessionItem): void => {
+    void callStewardItems<{ id: string; title: string; path: string }>('session-workspaces-list', {}).then((res) => {
+      if (!res.ok) {
+        showToast(translate(t, 'move.loadFailed', { error: res.error ?? '?' }), false)
+        return
+      }
+      setMovePicker({ sessionId: item.sessionId, title: rowTitle(item), rows: res.items })
+    })
+  }
+
+  /** 真执行移动：成功后重取列表 + toast（含履历已记）。 */
+  const handleMove = (targetWorkspaceId: string): void => {
+    const picker = movePicker
+    if (picker === null) return
+    setMovePicker(null)
+    void callHostAny<{ to?: { title?: string } }>('session-move-workspace', {
+      sessionId: picker.sessionId,
+      targetWorkspaceId,
+    }).then((res) => {
+      if (res.ok) {
+        setSessions(null)
+        const target = picker.rows.find(row => row.id === targetWorkspaceId)
+        showToast(translate(t, 'move.done', { title: target?.title ?? targetWorkspaceId }), true)
+      } else {
+        showToast(translate(t, 'move.failed', { error: res.error ?? '?' }), false)
+      }
+    })
+  }
+
+  /**
+   * 行内删除（两步确认）。
+   *
+   * 复用批量清理同一条链路（归档 → 删 → 墓碑 → 备份）；活跃会话由 host 侧
+   * `stopActivity` 处理。**不受 `directDelete` 开关限制** —— 那个开关只管侧栏
+   * 菜单入口，面板即管理端（与既有「管理端批量删除不受限」同口径）。
+   */
+  const handleDeleteRow = (item: HostSessionItem): void => {
+    if (deleteConfirm !== item.sessionId) {
+      setDeleteConfirm(item.sessionId)
+      return
+    }
+    setDeleteConfirm(null)
+    setBatch({ busy: true, message: '', ok: true })
+    void callSteward<{ purged?: number }>('session-history-purge', { sessionIds: [item.sessionId] }).then((res) => {
+      setBatch({
+        busy: false,
+        message: res.ok
+          ? translate(t, 'manage.done.purge', { n: res.purged ?? 1 })
+          : translate(t, 'manage.done.error', { error: res.error ?? '?' }),
+        ok: res.ok,
+      })
+      if (res.ok) {
+        titleStream.current?.abort()
+        titleStream.current = null
+        setSessions(null)
+      }
+    })
+  }
+
+  const handleFork = (item: HostSessionItem): void => {    void forkSession(get, item.sessionId).then((res) => {
       if (res.ok) {
         titleStream.current?.abort()
         titleStream.current = null
@@ -711,7 +847,7 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
         ]),
         ...(collapsedGroups.has(group.cwd) ? [] : [createElement('div', {
           key: 'grid',
-          className: 'dmss_grid',
+          className: `dmss_grid${cols === 1 ? ' dmss_gridOne' : ''}`,
         }, group.items.filter(item => matchesText(item)).map(item => createElement('div', {
           key: item.sessionId,
           role: 'button',
@@ -792,11 +928,57 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
               !capabilitiesOf({ archived: item.archived === true || archivedIds.has(item.sessionId), live: liveIds === undefined ? undefined : liveIds.has(item.sessionId) }).fork,
               translate(t, 'row.archivedHint'),
               () => { handleFork(item) }),
+            // 移动工区：归档/live 会话在 host 侧会被拒，这里先灰掉免得白点。
+            iconBtn('moveBtn', translate(t, 'move.action'),
+              iconMove(),
+              item.archived === true || archivedIds.has(item.sessionId)
+                || (liveIds !== undefined && liveIds.has(item.sessionId)),
+              item.archived === true || archivedIds.has(item.sessionId)
+                ? translate(t, 'row.archivedHint')
+                : translate(t, 'move.liveHint'),
+              () => { openMovePicker(item) }),
+            // 删除：两步确认（第一次点变红，第二次真删）。
+            iconBtn('delBtn', translate(t, deleteConfirm === item.sessionId ? 'row.deleteConfirm' : 'row.deleteAction'),
+              iconTrash(),
+              false, '',
+              () => { handleDeleteRow(item) }),
           ]),
         ])))]),
       ])),
     ),
   ]
+
+  if (movePicker !== null) {
+    children.push(createElement('div', {
+      key: 'moveMask',
+      className: 'dmss_moveMask',
+      // 点遮罩关闭；点卡片不关（stopPropagation）
+      onClick: () => { setMovePicker(null) },
+    }, createElement('div', {
+      key: 'moveCard',
+      className: 'dmss_moveCard',
+      onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
+    }, [
+      createElement('div', { key: 'title', className: 'dmss_moveTitle' }, translate(t, 'move.action')),
+      createElement('div', { key: 'sub', className: 'dmss_moveSub' }, movePicker.title),
+      createElement('div', { key: 'list', className: 'dmss_moveList' },
+        movePicker.rows.map(row => createElement('button', {
+          key: row.id,
+          type: 'button',
+          className: 'dmss_moveRow',
+          // 已在该工区就不给点（移过去等于不动）
+          disabled: row.path === (sessions ?? []).find(s2 => s2.sessionId === movePicker.sessionId)?.cwd,
+          onClick: () => { handleMove(row.id) },
+        }, [
+          createElement('span', { key: 't', className: 'dmss_moveRowTitle' }, row.title),
+          createElement('span', { key: 'p', className: 'dmss_moveRowPath' }, row.path),
+        ]))),
+      createElement('button', {
+        key: 'cancel', type: 'button', className: 'dmss_moveCancel',
+        onClick: () => { setMovePicker(null) },
+      }, translate(t, 'row.moveCancel')),
+    ])))
+  }
 
   if (selected.size > 0) {
     children.push(createElement('div', { key: 'batch', className: 'dmss_batchBar' }, [
@@ -822,7 +1004,11 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
     ]))
   }
 
-  return createElement('div', { className: 'dmss_manageRoot', style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } }, children)
+  return createElement('div', {
+    className: 'dmss_manageRoot',
+    ref: gridHostRef,
+    style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, '--dmss-cols': String(cols) } as React.CSSProperties,
+  }, children)
 }
 
 /** Format an epoch-ms timestamp: today → HH:mm, else YYYY-MM-DD HH:mm. */

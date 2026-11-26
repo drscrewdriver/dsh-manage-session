@@ -1,5 +1,34 @@
 # Changelog / 变更日志
 
+## 2.0.24
+
+**管理台三件事：行内删除 / 移动工作区（带履历）/ 每行 1–6 列；「复制会话」改回官方叫法「分叉会话」。**
+
+**① 行内删除**：行动作区新增垃圾桶按钮，两步确认（第一次点变红，第二次真删）。
+复用批量清理同一条链路（归档 → 删 → 墓碑 → `.release-backup`），活跃会话由 host 侧 `stopActivity` 停掉再删。
+**不受 `directDelete` 开关限制**——那个开关只管侧栏菜单入口，面板即管理端。
+
+**② 移动工作区 + 移动履历**：官方 `WorkspaceRegistry` 没有跨工区转移接口（工区归属真源是会话 header 的 `cwd`），
+所以本版实现的是**真移动**：
+- 改写 `session.v4.jsonl.zstd` **首帧**的 `cwd`（只动首帧，行数与其余行逐字不变，CRLF 保持）；
+- 把日志目录搬到目标 cwd 对应的 `--projectKey--` 下（`projectKey` 逐字符复刻宿主 `session-persistence-jsonl` 的编码，含 251 截断与分隔符折叠）；
+- **先写新位置（临时名 + 原子 rename + 回读校验 id/cwd）再动旧目录**，任一失败整体回滚；
+- 旧目录整体搬进 `storages/manage-session/move-backup/<id>-<ts>/`，**不硬删**（可整目录搬回）；
+- 首次移动创建 `storages/manage-session/move-ledger.jsonl`，每条记 `ts / sessionId / fromPath / toPath / fromWorkspaceId / toWorkspaceId / from-to projectKey / bytes`。
+- 拒绝条件（任一即拒，零写入）：会话 live、会话已归档、目标工区不存在、目标目录不存在、目标位置已有同名日志。
+- 新增三个 host 方法：`session-workspaces-list` / `session-move-workspace` / `session-move-ledger-list`（均只受总开关管）。
+
+**③ 每行 1–6 列 + 1 列大卡**：设置卡新增「每行会话数」1–6 分段按钮（缺省 3 = 升级前观感）。
+有效列数由纯函数 `resolveColumns(设置, 容器宽)` 裁决：`<760px` 强制 1 列、`<1180px` 最多 2 列、其余按设置；
+容器宽度用 `ResizeObserver` 跟踪。`grid-template-columns` 改成吃 `--dmss-cols` 变量（`repeat()` 只吃整数，没法 `min(var(),2)`）。
+**1 列单独优化**：标题 14px/600、行高 52px、元信息与动作**常显不 hover**、动作右对齐放大。
+
+**④ 文案**：`row.cloneAction` / `row.clone` / `row.cloneFailed` 三键 × 10 语由「复制会话」改为官方叫法「分叉会话」（Fork session 等）；行为不变，仍调 `uiWorkspace.forkSession`。
+
+**新增单测 45 条**：`workspace-move.spec.ts`（12）锁 `projectKey` 逐字符等价、首帧改写、备份、履历；
+`session-move-route.spec.ts`（7）锁拒绝条件与成功路径（真 zstd 日志 + 真 workspace.json，不 mock 磁盘）；
+`columns.spec.ts`（7）覆盖 6 档 × 3 断点 18 组合；其余为路由/派发与既有测试的适配。
+
 ## 2.0.23
 
 **修复：改名「存不住」——改完刷新又变回旧标题。**

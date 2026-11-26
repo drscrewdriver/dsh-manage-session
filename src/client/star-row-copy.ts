@@ -65,9 +65,9 @@ function pickLang(): { ask: string } {
   const tag = (typeof document !== "undefined" && document.documentElement.lang) || "";
   const low = tag.toLowerCase();
   for (const cand of STAR_LANGS) {
-    if (low.startsWith(cand)) return STAR_COPY[cand];
+    if (low.startsWith(cand)) return STAR_COPY[cand]!;
   }
-  return STAR_COPY.en;
+  return STAR_COPY.en!;
 }
 
 // STAR:EXTENDED:BEGIN — S 档专用段（话术 + ★ CTA + dismissed）。sync 对 A/L 副本整段剥除，
@@ -151,7 +151,7 @@ function extendedStarRow(link: HTMLElement, d: Document): HTMLElement | null {
   row.appendChild(link);
   const ask = d.createElement("span");
   ask.className = "dsh-star-ask";
-  ask.textContent = STAR_COPY[lang].ask;
+  ask.textContent = STAR_COPY[lang]!.ask;
   row.appendChild(ask);
   const cta = d.createElement("button");
   cta.type = "button";

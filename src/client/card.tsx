@@ -14,6 +14,7 @@ import { createElement, useState, useSyncExternalStore, type JSX } from 'react'
 import { DEFAULT_CONFIG, type StewardConfig } from '../config.ts'
 import { translate, type LocaleKey } from './locales.ts'
 import { mountStarRow } from './star-row-copy.ts'
+import { COLUMN_CHOICES, normalizeColumns } from './columns.ts'
 
 /** 卡片字典面。 */
 export type CardTranslate = (key: LocaleKey, params?: Record<string, unknown>) => string
@@ -148,6 +149,20 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
         }),
       }),
     )
+    // 每行显示几个会话（1–6）。1 列在 manage 里有专门的大卡样式。
+    rows.push(createElement(Row, {
+      key: 'columns',
+      title: translate(t, 'card.columns'),
+      desc: translate(t, 'card.columns.desc'),
+      control: createElement('div', { className: 'dms_seg' }, COLUMN_CHOICES.map(n => createElement('button', {
+        key: String(n),
+        type: 'button',
+        className: `dms_segBtn${normalizeColumns(value.columns) === n ? ' dms_segBtnOn' : ''}`,
+        disabled: !writable,
+        'aria-pressed': normalizeColumns(value.columns) === n,
+        onClick: () => { void scope.set('columns', n) },
+      }, String(n)))),
+    }))
     if (!writable) rows.push(createElement('div', { key: 'ro', className: 'dms_setDesc' }, translate(t, 'card.readonly')))
   }
 

@@ -19,7 +19,7 @@ import type { Context } from 'cordis'
 import { registerSessionsCommand } from './tui-command.ts'
 import z from '@deepseek-ai/schemastery'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -58,6 +58,15 @@ import { countCorpus, findSession, findSessionLog, scanSessions } from './host/h
 import { gateSourceKind, migrateSessionSourceKind, readSourceKindFacts } from './host/health/source-kind.ts'
 import { TitleMemo, resolveTitlesFromProjections, type CatalogCtxFace, type CatalogTitleRecord } from './host/catalog/title-source.ts'
 import { streamCatalogTitles, type CatalogTitleEvent } from './host/catalog/stream.ts'
+import {
+  appendMoveLedger,
+  locateSessionLog,
+  moveSessionLog,
+  readLogText,
+  readMoveLedger,
+  readWorkspaceRows,
+  type LocatedLog,
+} from './host/workspace/move.ts'
 
 export { DEFAULT_CONFIG, STEWARD_API_PREFIX, STEWARD_SETTINGS_NAMESPACE } from './config.ts'
 export type { StewardConfig } from './config.ts'
@@ -142,6 +151,8 @@ export const Config = z.object({
   historyFiles: withVolatile(z.boolean().default(true)),
   healthCheck: withVolatile(z.boolean().default(true)),
   directDelete: withVolatile(z.boolean().default(false)),
+  // 每行几个会话（1–6）。窄屏降档由客户端 resolveColumns 裁决，schema 只收范围。
+  columns: withVolatile(z.number().default(3)),
 })
 
 /** 单次请求体的上限（防御无界读取）。 */
@@ -313,7 +324,7 @@ export const HISTORY_METHODS = [
  * 覆盖回旧标题，用户看到的就是「改完又变回去」。这里直连宿主 durable 通道
  * `sessionController.session.rename()`，并在成功后主动失效 memo。
  */
-export const ROW_ACTION_METHODS = ['session-rename'] as const
+export const ROW_ACTION_METHODS = ['session-rename', 'session-workspaces-list', 'session-move-workspace', 'session-move-ledger-list'] as const
 export const HEALTH_METHODS = [
   'session-health-status',
   'session-health-scan',
@@ -734,6 +745,136 @@ export async function renameSessionViaHost(runtime: StewardRuntime, payload: unk
   }
 }
 
+/**
+ * 列出可用工区（`session-workspaces-list`）。
+ *
+ * 读宿主 `workspace.json` 的表（与「移动」写日志同一份真源），不调
+ * `workspaceRegistry.list()` —— 后者给的是内存模型对象，序列化形状不稳定，
+ * 而移动需要的就是磁盘上的 `path`。
+ * @param runtime - 运行时依赖。
+ */
+export function listWorkspaces(runtime: StewardRuntime): unknown {
+  try {
+    const rows = readWorkspaceRows(runtime.dshHome)
+    return { ok: true, items: rows }
+  } catch (err) {
+    return { ok: false, error: String(err instanceof Error ? err.message : err) }
+  }
+}
+
+/**
+ * 把会话移动到另一个工区（`session-move-workspace`）。
+ *
+ * **官方没有跨工区接口**：工区归属真源是日志 header 的 `cwd`，所以这里做的是
+ * 「改写首帧 cwd + 搬目录到目标 projectKey 下 + 旧目录进备份 + 落履历」。
+ *
+ * 拒绝条件（任一满足即拒，绝不半截写入）：
+ * - 会话 live（打开中/有运行回合）—— 宿主正持有写句柄，搬了会双写；
+ * - 会话已归档 —— 归档槽位绑在原工区，搬了会错位；
+ * - 目标工区不存在 / 目录不存在；
+ * - 源 = 目标（无意义操作）。
+ * @param runtime - 运行时依赖。
+ * @param payload - `{sessionId, targetWorkspaceId}`。
+ */
+export async function moveSessionToWorkspace(runtime: StewardRuntime, payload: unknown): Promise<unknown> {
+  const request = (payload ?? {}) as { sessionId?: unknown; targetWorkspaceId?: unknown }
+  const sessionId = typeof request.sessionId === 'string' ? request.sessionId.trim() : ''
+  const targetWorkspaceId = typeof request.targetWorkspaceId === 'string' ? request.targetWorkspaceId.trim() : ''
+  if (sessionId === '') return { ok: false, error: '缺少 sessionId' }
+  if (targetWorkspaceId === '') return { ok: false, error: '缺少 targetWorkspaceId' }
+
+  // ① 工区校验
+  let rows: ReturnType<typeof readWorkspaceRows>
+  try {
+    rows = readWorkspaceRows(runtime.dshHome)
+  } catch (err) {
+    return { ok: false, error: String(err instanceof Error ? err.message : err) }
+  }
+  const target = rows.find(row => row.id === targetWorkspaceId)
+  if (target === undefined) return { ok: false, error: `目标工区不存在：${targetWorkspaceId}` }
+  if (!existsSync(target.path)) {
+    return { ok: false, error: `目标工区目录不存在：${target.path}` }
+  }
+
+  // ② live / 归档拒绝
+  const liveIds = readLiveSessionIds(runtime)
+  if (liveIds?.has(sessionId) === true) {
+    return { ok: false, code: 'session-live', error: '会话当前处于打开状态，请先关闭它再移动' }
+  }
+  // 归档判定取「存储文件 ∪ 宿主 registry 内存」：readArchiveSet 文件优先，
+  // 而移动这种一次性动作不能只看单一面 —— 任一面说归档就拒绝。
+  const archiveRead = readArchiveSet(runtime.registry())
+  const archivedAll = new Set<string>([...archiveRead.ids, ...(archiveRead.registryIds ?? [])])
+  if (archivedAll.has(sessionId)) {
+    return { ok: false, code: 'session-archived', error: '归档会话不支持移动，请先取消归档' }
+  }
+
+  // ③ 定位 + 移动
+  const log = locateSessionLog(runtime.dshHome, sessionId)
+  if (log === undefined) {
+    return { ok: false, code: 'log-not-found', error: '找不到该会话的日志文件' }
+  }
+  const stamp = String(Date.now())
+  let outcome: ReturnType<typeof moveSessionLog>
+  try {
+    outcome = moveSessionLog({
+      log,
+      targetCwd: target.path,
+      dshHome: runtime.dshHome,
+      sessionId,
+      backupRoot: join(runtime.dshHome, 'storages', 'manage-session', 'move-backup'),
+      stamp,
+    })
+  } catch (err) {
+    return { ok: false, error: String(err instanceof Error ? err.message : err) }
+  }
+
+  // ④ 履历（首次移动时创建文件）
+  // 原工区：用移动前保存的 cwd 反查（备份里的日志已被改写，不能当依据）
+  const fromWorkspaceId = rows.find(row => row.path === outcome.fromCwd)?.id ?? ''
+  const ledgerPath = appendMoveLedger(runtime.dshHome, {
+    ts: Number(stamp),
+    sessionId,
+    fromPath: outcome.fromPath,
+    toPath: outcome.toPath,
+    fromWorkspaceId,
+    toWorkspaceId: target.id,
+    fromProjectKey: outcome.fromProjectKey,
+    toProjectKey: outcome.toProjectKey,
+    bytes: outcome.bytes,
+  })
+
+  // ⑤ 让面板/宿主下次读取时重新解析（cwd 变了，标题 memo 里那条的来源假设已失效）
+  runtime.titles?.invalidate([sessionId])
+  return {
+    ok: true,
+    sessionId,
+    from: { workspaceId: fromWorkspaceId, path: outcome.fromPath },
+    to: { workspaceId: target.id, title: target.title, path: target.path },
+    ledgerPath,
+    backupDir: outcome.backupDir,
+    bytes: outcome.bytes,
+  }
+}
+
+/**
+ * 读 live 会话 id 集合（宿主 `sessions.list()` 快照）。服务缺席返回 undefined。
+ * @param runtime - 运行时依赖。
+ */
+function readLiveSessionIds(runtime: StewardRuntime): ReadonlySet<string> | undefined {
+  try {
+    const svc = runtime.ctx?.get('sessions') as { list?(): { byId?: unknown } } | undefined
+    const snap = svc?.list?.()
+    if (snap === undefined) return undefined
+    const raw = snap.byId
+    if (raw instanceof Map) return new Set([...raw.keys()] as string[])
+    if (raw !== null && typeof raw === 'object') return new Set(Object.keys(raw as Record<string, unknown>))
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** 收藏文件候选（与管家其余域同一 dshHome 纪律）。 */
 function favoritesPathsFor(dshHome: string): string[] {
   return [join(dshHome, 'storages', 'manage-session-favorites.json')]
@@ -773,6 +914,7 @@ function configSnapshotProjection(
       healthCheck: config.healthCheck,
       // 老线卡回读面：漏字段 = 拨了显示不跟（写路 bridge schema 已在位）。
       directDelete: config.directDelete,
+      columns: config.columns,
     },
   }
 }
@@ -808,6 +950,19 @@ export async function handleMethod(
 
   if (method === 'session-rename') {
     return await renameSessionViaHost(runtime, payload)
+  }
+  if (method === 'session-workspaces-list') {
+    return listWorkspaces(runtime)
+  }
+  if (method === 'session-move-ledger-list') {
+    const request = (payload ?? {}) as { limit?: unknown }
+    const limit = typeof request.limit === 'number' && Number.isFinite(request.limit) && request.limit > 0
+      ? Math.min(Math.trunc(request.limit), 200)
+      : 50
+    return { ok: true, items: readMoveLedger(runtime.dshHome, limit) }
+  }
+  if (method === 'session-move-workspace') {
+    return await moveSessionToWorkspace(runtime, payload)
   }
   if (method === 'session-history-list') {
     return await listHistory(runtime.registry, undefined, storagePathsFor(runtime.dshHome), runtime.dshHome)
@@ -1069,6 +1224,7 @@ export async function handleMethod(
         historyFiles: config.historyFiles,
         healthCheck: config.healthCheck,
         directDelete: config.directDelete,
+        columns: config.columns,
       },
       historyMethods: [...HISTORY_METHODS],
       healthMethods: [...HEALTH_METHODS],
@@ -1234,11 +1390,16 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
     const { steward } = bridgeOverlay(settingsBridge)
     const bool = (doc: Record<string, unknown>, key: string, v: boolean): boolean =>
       typeof doc[key] === 'boolean' ? (doc[key] as boolean) : v
+    const num = (doc: Record<string, unknown>, key: string, v: number): number => {
+      const raw = doc[key]
+      return typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 6 ? raw : v
+    }
     return {
       enabled: bool(steward, 'enabled', readVolatileValue(config.enabled) ?? DEFAULT_CONFIG.enabled),
       historyFiles: bool(steward, 'historyFiles', readVolatileValue(config.historyFiles) ?? DEFAULT_CONFIG.historyFiles),
       healthCheck: bool(steward, 'healthCheck', readVolatileValue(config.healthCheck) ?? DEFAULT_CONFIG.healthCheck),
       directDelete: bool(steward, 'directDelete', readVolatileValue(config.directDelete) ?? DEFAULT_CONFIG.directDelete),
+      columns: num(steward, 'columns', readVolatileValue(config.columns) ?? DEFAULT_CONFIG.columns),
     }
   }
 
