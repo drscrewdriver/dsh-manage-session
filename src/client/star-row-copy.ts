@@ -177,7 +177,8 @@ export function mountStarRow(doc?: Document): HTMLElement {
     tag.textContent = STYLE_CSS;
     d.head.appendChild(tag);
   }
-  const repo = (REPO_URL.match(/github\.com\/([^/]+\/[^/#?]+)/) ?? [, "drscrewdriver"])[1];
+  const match = REPO_URL.match(/github\.com\/([^/]+\/[^/#?]+)/);
+  const repo = match ? match[1]! : "drscrewdriver";
   const a = d.createElement("a");
   a.className = "dsh-star-row";
   a.href = REPO_URL;
