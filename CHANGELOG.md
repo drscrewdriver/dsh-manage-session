@@ -1,5 +1,19 @@
 # Changelog / 变更日志
 
+## 2.0.27 (2026-11-27)
+
+**设置卡真的能改了：写路径打通 · 开关乐观回显 · 列数改滑块 · 面板设置捷径 · star 行换 v2 页脚。**
+
+- **修：设置卡整片禁用（「当前会话无法修改设置（只读挂载）」）**。宿主 settings provider 的 `writable` 恒为 true，只读是插件自己报的：桥的咬合条件写成「有 `register` 才挂」，而 0.1.7+ 宿主没有 `register`。现在按「有写入口」判定（`update` 或 `mutate` 存在即咬合），`register` 降级为老线专属。
+- **修：写进去被宿主拒收（`No configurable plugin entry`）**。根因是 `withVolatile` 的守卫写成 `typeof field === 'object'`，而 schemastery 3.x 的 Schema 实例是 **callable**（`typeof === 'function'`）——守卫恒假，`.volatile()` 一次都没调用，宿主 `volatileForm()` 返回 undefined 后 `describe()` 整条跳过本 entry。放行 function 后五个字段全部标上 volatile。
+- **新增：设置卡乐观回显**。原生 configForms 的 `set` 要等宿主回镜像才更新快照，往返期间 UI 不动（拨了像没拨）。卡内加一层 pending 覆盖：控件立刻按新值渲染，权威快照追上即撤覆盖；写失败撤覆盖回滚并显示「写入未生效」。
+- **改：列数 1–6 改滑块**。六档分段钮换成 `input[type=range]` + 数值读数；拖动过程只改本地草稿不写网络，松手/失焦/键盘松开才落盘。
+- **改：列数由设置快照驱动**。管理台原来只在挂载时读一次 `session-health-status`，设置改了网格不跟；现在 `columns` 走 prop，改完即时重排（prop 缺省保留一次性读取兜底）。
+- **新增：面板头部「设置」钮**。一键跳到 设置→插件（本插件配置卡所在分区）；拿不到设置壳 store 时降级为 3 秒路径提示，不依赖设置快照。
+- **改：star 行换 v2 页脚版式**（kit 真源同步）。一行 `版本 · 短问句 · ⭐ 去点星 · 💬 提 issue`，取消按钮式 ★/× 与分割线；点过任一链接即收敛为中性一行。关闭键升 `dsh.star.<ns>.v2.dismissed`，读到旧键即清、**不迁值**（旧值是「点 ★ 被误写成隐藏」的脏数据）。
+- 文案新键 `panel.settings` / `panel.settings.hint` / `card.columns.value` / `card.saveFailed`，10 语齐。
+- 新增 `scripts/install-local.mjs`（本地构建装进桌面 profile，带备份与产物点名校验）。
+
 ## 2.0.26 (2026-11-26)
 
 **设置卡底栏 Star 快车道：★ 直接打开仓库页（不再只静默收起），隐藏独立成 ×。**
