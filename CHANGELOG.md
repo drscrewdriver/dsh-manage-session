@@ -29,6 +29,7 @@
 - 点钮写入 `localStorage dsh.star.manage-session.dismissed=1`：只收话术与按钮，**仓库链接常驻**；刷新/升级都不复活话术。
 - 话术 10 语随宿主 `documentElement.lang` 前缀切换；无弹窗、无浮层、无 toast。
 - 行组件由 `_tools/star-row` 单源生成（`sync.mjs --check` 防漂移），本包 `src/client/star-row-copy.ts` 只是生成副本。
+- 新增 `tests/star-row.spec.ts` 固化四条行为契约：渲染/链接属性（`target=_blank rel=noreferrer`）/10 语切换与英文回落/点钮后只收话术、刷新后只剩链接。
 
 ## 2.0.20
 

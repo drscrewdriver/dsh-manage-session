@@ -16,7 +16,7 @@
 
 > 社区维护的 DeepSeek Harness（DSH）插件，非 DeepSeek AI 官方产品。
 
-本文描述 **2.0.22-rc.4**。已发布变更见 [更新日志](CHANGELOG.md)。
+本文描述 **2.0.22-rc.5**。已发布变更见 [更新日志](CHANGELOG.md)。
 
 ## 功能概览
 

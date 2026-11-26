@@ -16,7 +16,7 @@
 
 > Von der Community gepflegtes DeepSeek-Harness-(DSH-)Plugin, kein offizielles DeepSeek-AI-Produkt.
 
-Dieses Dokument beschreibt **2.0.22-rc.4**. Veröffentlichte Änderungen im [Changelog](CHANGELOG.md).
+Dieses Dokument beschreibt **2.0.22-rc.5**. Veröffentlichte Änderungen im [Changelog](CHANGELOG.md).
 
 ## Funktionsumfang
 
