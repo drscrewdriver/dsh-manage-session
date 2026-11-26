@@ -139,7 +139,12 @@ function readVolatileValue<T>(value: T | VolatileRef<T> | undefined): T | undefi
  * 不到就返回普通字段（老线的配置只来自组合入口，无设置表单，行为正确）。
  */
 function withVolatile<T extends { volatile?: unknown }>(field: T): T {
-  if (field !== null && typeof field === 'object' && typeof field.volatile === 'function') {
+  // **schema 是 callable，不是普通对象**：schemastery 3.x 的 Schema 实例
+  // `typeof` 为 'function'。早期这里写成 `typeof field === 'object'`，探测恒假，
+  // .volatile() 一次都没调用过 ⇒ 宿主 volatileForm() 返回 undefined ⇒ describe()
+  // 整条跳过本 entry（连 ns 都不出现）⇒ 设置表单一律不可写、写请求被
+  // "No configurable plugin entry" 拒绝。放行 function 才是真的探测。
+  if (field !== null && (typeof field === 'object' || typeof field === 'function') && typeof field.volatile === 'function') {
     return (field as { volatile: () => T }).volatile()
   }
   return field

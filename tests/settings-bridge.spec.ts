@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../src/config.ts'
-import { handleMethod, type StewardRuntime } from '../src/index.ts'
+import { Config, handleMethod, type StewardRuntime } from '../src/index.ts'
 import {
   bridgeOverlay,
   describeNamespaces,
@@ -58,6 +58,20 @@ function fakeCtx(settings: unknown): unknown {
   }
 }
 
+describe('Config schema 的 volatile 标记（设置表单的地基）', () => {
+  // 这条契约抓的是真出过的线上事故：schema 是 **callable**（typeof 'function'），
+  // 早期 withVolatile 用 typeof === 'object' 守卫 → 恒假 → 一个字段都没标 volatile
+  // → 宿主 volatileForm() 返回 undefined → describe() 整条跳过本 entry（ns 都不出现）
+  // → 设置表单一律不可写、写请求被 "No configurable plugin entry" 拒绝。
+  it('五个字段全部带 volatile 元数据（否则宿主根本不认这个命名空间）', () => {
+    const dict = (Config as unknown as { dict?: Record<string, { meta?: { volatile?: unknown } }> }).dict ?? {}
+    const fields = ['enabled', 'historyFiles', 'healthCheck', 'directDelete', 'columns']
+    for (const field of fields) {
+      expect(dict[field], field).toBeDefined()
+      expect(dict[field]!.meta?.volatile, field).toBe(true)
+    }
+  })
+})
 describe('桥咬合（两代宿主）', () => {
   it('老线（≤0.1.5）：register 在 → 先注册 schema，读写落 manage-session', async () => {
     const registered: string[] = []
