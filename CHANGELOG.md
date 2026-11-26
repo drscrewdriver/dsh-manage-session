@@ -1,5 +1,13 @@
 # Changelog / 变更日志
 
+## 2.0.25
+
+**`/sessions audit` 新增可选进度列（服务缺席零影响）。**
+
+- TUI 命令面在宿主提供 `progressAnchor` 服务时，audit 每行行尾追加 `  <percent>% <done>/<total> · ETA <etaMin>m`（仅 board.enabled 且有 summary；ETA 仅在 etaMin 为数字时显示）。
+- 服务缺席或读取抛错时 `readAnchor` 未定义，audit 输出与旧版逐字符一致；`archived` 子命令不追加进度列。
+- 新增 `tests/tui-anchor.spec.ts`（5 条）：无服务基线、enabled=true 进度/ETA、enabled=false 不追加、抛错退化、archived 不受影响。
+
 ## 2.0.24
 
 **管理台三件事：行内删除 / 移动工作区（带履历）/ 每行 1–6 列；「复制会话」改回官方叫法「分叉会话」。**

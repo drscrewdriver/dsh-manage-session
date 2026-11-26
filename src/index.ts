@@ -1481,10 +1481,21 @@ export function apply(ctx: Context, config: Partial<StewardConfig> = {}): void {
   // ── dsh-tui 终端面：`/sessions` ────────────────────────────────
   // TUI 不加载侧栏/管理台页面，只剩本地 `/list` → 看不到总数与最近会话。
   // 命令层复用 listSessions(runtime) 同一份语料，只读。
+  // 可选进度列：宿主提供 progressAnchor 时给 audit 每行追加进度/ETA。
+  // 服务缺席或读取抛错一律零影响，退化为 readAnchor 未定义。
+  let readAnchor: ((sessionId: string) => any) | undefined
+  try {
+    const service = ctx.get('progressAnchor') as { get?(sessionId: string): any } | undefined | null
+    if (service && typeof service.get === 'function') {
+      readAnchor = (sid) => service.get!(sid)
+    }
+  } catch {
+    readAnchor = undefined
+  }
   ;(ctx as unknown as {
     inject?: (deps: string[], cb: (scope: Context) => void) => void
   }).inject?.(['commands'], (scope) => {
-    registerSessionsCommand(scope, { list: () => listSessions(runtime) })
+    registerSessionsCommand(scope, { list: () => listSessions(runtime), readAnchor })
   })
 
   // ── 管家子域路由。

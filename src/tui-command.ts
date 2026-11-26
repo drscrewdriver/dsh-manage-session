@@ -20,8 +20,18 @@ export interface SessionRow {
   archived?: boolean
 }
 
+export interface ProgressAnchorFace {
+  board?: {
+    enabled?: boolean
+    summary?: { percent?: number; done?: number; total?: number }
+  }
+  time?: { etaMin?: number }
+}
+
 export interface SessionsDeps {
   list(): Promise<{ ok: boolean; items?: unknown[]; error?: string }>
+  /** 可选：宿主 progressAnchor 服务的同步读取；缺席/抛错时退化为不渲染进度列。 */
+  readAnchor?(sessionId: string): any
 }
 
 const MAX_LINES = 40
@@ -112,7 +122,22 @@ export async function runSessionsCommand(rawInput: string, deps: SessionsDeps): 
     : `sessions audit — 共 ${sorted.length} 个（归档 ${archivedCount}），显示前 ${Math.min(limit, sorted.length)}`
   const lines = [head]
   for (const row of sorted.slice(0, limit)) {
-    lines.push(`  ${String(row.sessionId ?? '').slice(-8)}  ${day(row.updatedAt)}  ${clip(row.title || '(untitled)', 52)}`)
+    let line = `  ${String(row.sessionId ?? '').slice(-8)}  ${day(row.updatedAt)}  ${clip(row.title || '(untitled)', 52)}`
+    if (sub === 'audit' && typeof deps.readAnchor === 'function' && row.sessionId) {
+      try {
+        const anchor = deps.readAnchor(row.sessionId) as ProgressAnchorFace | undefined
+        const board = anchor?.board
+        const summary = board?.enabled === true ? board.summary : undefined
+        if (summary) {
+          line += `  ${summary.percent}% ${summary.done}/${summary.total}`
+          const eta = anchor?.time?.etaMin
+          if (typeof eta === 'number' && Number.isFinite(eta)) line += ` · ETA ${eta}m`
+        }
+      } catch {
+        // 进度列是可选增强：读数抛错时保持原行不变。
+      }
+    }
+    lines.push(line)
   }
   if (sorted.length > limit) lines.push(`  … 还有 ${sorted.length - limit} 个，加 --all 查看`)
   return wrap({ kind: 'success', text: renderLines(lines) }, { total: allRows.length, archived: archivedCount, items: sorted.slice(0, limit) })
