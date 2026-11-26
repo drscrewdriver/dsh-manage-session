@@ -178,6 +178,12 @@ function injectStyles(): () => void {
 .dms_toggleKnob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s ease}
 .dms_toggleOn .dms_toggleTrack{background:var(--dsw-alias-button-primary-fill,#3f63d8)}
 .dms_toggleOn .dms_toggleKnob{left:18px}
+/* 列数滑块（2026-11-26 用户定标：1–6 六档按钮改滑块） */
+.dms_sliderBox{display:inline-flex;align-items:center;gap:8px;flex:none}
+.dms_slider{width:124px;height:18px;accent-color:var(--dsw-alias-button-primary-fill,#3f63d8);cursor:pointer;background:transparent}
+.dms_slider:disabled{cursor:default;opacity:.45}
+.dms_sliderVal{min-width:12px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary,#6b7280)}
+.dms_setFail{font-size:12px;line-height:18px;margin-top:6px;padding:5px 9px;border-radius:8px;color:#b91c1c;background:rgba(220,38,38,.10);border:1px solid rgba(220,38,38,.28)}
 `
   document.head.appendChild(style)
   return () => { style.remove() }

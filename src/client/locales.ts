@@ -116,6 +116,8 @@ export const zh = {
   'health.ago.days': '{n} 天前',
   'card.columns': '每行会话数',
   'card.columns.desc': '1 列用大卡显示：标题更大，信息与动作常显。',
+  'card.columns.value': '{n} 列',
+  'card.saveFailed': '写入未生效：宿主拒绝了这次修改（已回滚）。',
 } as const
 
 /** English dictionary (same keys). */
@@ -220,6 +222,8 @@ export const en: Record<LocaleKey, string> = {
   'health.ago.days': '{n} d ago',
   'card.columns': 'Sessions per row',
   'card.columns.desc': '1 column uses the large-card layout: bigger title, meta and actions always visible.',
+  'card.columns.value': '{n} columns',
+  'card.saveFailed': 'Not saved: the host rejected this change (rolled back).',
 }
 
 /** 日本語辞書（zh のキー集合に対し完全性を検査）。 */
@@ -316,6 +320,8 @@ export const ja: Partial<Record<LocaleKey, string>> = {
   'health.ago.days': '{n} 日前',
   'card.columns': '1 行あたりのセッション数',
   'card.columns.desc': '1 列は大きいカード表示：タイトル拡大、情報と操作を常時表示。',
+  'card.columns.value': '{n} 列',
+  'card.saveFailed': '保存できませんでした：ホストが変更を拒否しました（元に戻しました）。',
 }
 
 /** 한국어 사전 (zh 키 집합에 대해 완전성 검사). */
@@ -412,6 +418,8 @@ export const ko: Partial<Record<LocaleKey, string>> = {
   'health.ago.days': '{n}일 전',
   'card.columns': '행당 세션 수',
   'card.columns.desc': '1열은 큰 카드로 표시: 제목 확대, 정보와 동작 상시 표시.',
+  'card.columns.value': '{n}열',
+  'card.saveFailed': '저장되지 않았습니다. 호스트가 변경을 거부했습니다(되돌렸습니다).',
 }
 
 /** Dictionnaire français, vérifié complet contre le jeu de clés zh. */
@@ -508,6 +516,8 @@ export const fr: Partial<Record<LocaleKey, string>> = {
   'health.ago.days': 'il y a {n} j',
   'card.columns': 'Sessions par ligne',
   'card.columns.desc': '1 colonne = grande carte : titre plus grand, infos et actions toujours visibles.',
+  'card.columns.value': '{n} colonnes',
+  'card.saveFailed': 'Non enregistré\u00a0: l\u2019hôte a refusé cette modification (annulée).',
 }
 
 /** Deutsches Wörterbuch, vollständig gegen den zh-Schlüsselsatz geprüft. */
@@ -604,6 +614,8 @@ export const de: Partial<Record<LocaleKey, string>> = {
   'health.ago.days': 'vor {n} Tg',
   'card.columns': 'Sitzungen pro Zeile',
   'card.columns.desc': '1 Spalte = große Karte: größerer Titel, Infos und Aktionen immer sichtbar.',
+  'card.columns.value': '{n} Spalten',
+  'card.saveFailed': 'Nicht gespeichert: Der Host hat die Änderung abgelehnt (zurückgesetzt).',
 }
 
 /** Dizionario italiano, verificato completo contro l'insieme di chiavi zh. */
@@ -700,6 +712,8 @@ export const it: Partial<Record<LocaleKey, string>> = {
   'health.ago.days': '{n} g fa',
   'card.columns': 'Sessioni per riga',
   'card.columns.desc': '1 colonna = scheda grande: titolo più grande, info e azioni sempre visibili.',
+  'card.columns.value': '{n} colonne',
+  'card.saveFailed': 'Non salvato\u00a0: l\u2019host ha rifiutato la modifica (annullata).',
 }
 
 /** Русский словарь, проверен на полноту по набору ключей zh. */
@@ -796,6 +810,8 @@ export const ru: Partial<Record<LocaleKey, string>> = {
   'health.ago.days': '{n} дн назад',
   'card.columns': 'Сессий в строке',
   'card.columns.desc': '1 колонка = крупная карточка: крупнее заголовок, информация и действия всегда видны.',
+  'card.columns.value': '{n} столбцов',
+  'card.saveFailed': 'Не сохранено: хост отклонил изменение (откат выполнен).',
 }
 
 /** Diccionario español, verificado completo contra el conjunto de claves zh. */
@@ -892,6 +908,8 @@ export const es: Partial<Record<LocaleKey, string>> = {
   'health.ago.days': 'hace {n} d',
   'card.columns': 'Sesiones por fila',
   'card.columns.desc': '1 columna = tarjeta grande: título mayor, información y acciones siempre visibles.',
+  'card.columns.value': '{n} columnas',
+  'card.saveFailed': 'No guardado: el host rechazó este cambio (revertido).',
 }
 
 export const pt: Partial<Record<LocaleKey, string>> = {
@@ -987,6 +1005,8 @@ export const pt: Partial<Record<LocaleKey, string>> = {
   "health.ago.days": "há {n} d",
   'card.columns': 'Sessões por linha',
   'card.columns.desc': '1 coluna = cartão grande: título maior, informações e ações sempre visíveis.',
+  'card.columns.value': '{n} colunas',
+  'card.saveFailed': 'Não salvo: o host recusou esta alteração (revertida).',
 }
 
 

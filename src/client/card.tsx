@@ -6,11 +6,18 @@
  * 的抽屉形态不一致，还让 `card.title` / `card.desc` 成为死文案。
  *
  * 读写走 configForms（`configForms.get(STEWARD_ENTRY_ID)`，以本插件 entry 为键；
- * 旧宿主回退 settingsScope 绑定）的显式 `set`。0.1.7 起本卡挂在插件族共用
+ * 旧宿主回退 settingsScope 绑定）的显式 `set`。
+ *
+ * **乐观回显（2026-11-26 用户报「开关不跟手」）**：原生 configForms 的 `set` 是
+ * 「发请求 → 等宿主回镜像 → 才更新快照」，一个来回期间 UI 完全不动，拨了像没拨。
+ * 本卡自带一层 pending 覆盖：控件立刻按新值渲染，权威快照追上后自动撤覆盖；
+ * 写失败（宿主拒收）则撤覆盖回滚并以可见文案提示。
+ *
+ * 0.1.7 起本卡挂在插件族共用
  * 设置节（`dsh-family.tab`，dsh-thinking-levels 顶级「起子插件设置」节声明）里，
  * 与同节其它抽屉一样默认展开。
  */
-import { createElement, useState, useSyncExternalStore, type JSX } from 'react'
+import { createElement, useEffect, useRef, useState, useSyncExternalStore, type JSX } from 'react'
 import { DEFAULT_CONFIG, type StewardConfig } from '../config.ts'
 import { translate, type LocaleKey } from './locales.ts'
 import { mountStarRow } from './star-row-copy.ts'
@@ -108,6 +115,68 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
   const value: Partial<StewardConfig> = snapshot.value ?? {}
   const writable = snapshot.writable
 
+  // —— 乐观回显 ——
+  // pending：字段 → 用户刚拨成、但宿主还没确认的值；只覆盖「显示」，不改快照。
+  // failedField：最近一次写失败的字段（显示一句提示，下一次操作即清）。
+  const [pending, setPending] = useState<Record<string, unknown>>({})
+  const [failedField, setFailedField] = useState<string | null>(null)
+
+  /** 显示的字段值：pending 优先，否则取快照，最后落缺省。 */
+  const shown = <K extends keyof StewardConfig>(field: K): StewardConfig[K] | undefined => {
+    if (field in pending) return pending[field as string] as StewardConfig[K]
+    const current = value[field]
+    return current ?? DEFAULT_CONFIG[field]
+  }
+
+  // 权威快照追上 pending 的那一项就撤掉覆盖（否则会盖住之后来自别处的真实改动）。
+  useEffect(() => {
+    setPending((current) => {
+      const fields = Object.keys(current)
+      if (fields.length === 0) return current
+      const next: Record<string, unknown> = {}
+      let changed = false
+      for (const field of fields) {
+        if (snapshot.value !== undefined && (snapshot.value as unknown as Record<string, unknown>)[field] === current[field]) {
+          changed = true
+          continue
+        }
+        next[field] = current[field]
+      }
+      return changed ? next : current
+    })
+  }, [snapshot.value])
+
+  /** 写一个字段：先乐观上屏，失败则回滚并标记。 */
+  const commit = (field: string, next: unknown): void => {
+    setFailedField(null)
+    setPending((current) => ({ ...current, [field]: next }))
+    void scope.set(field, next).catch(() => {
+      // 宿主拒收：撤掉覆盖 = UI 弹回权威值，用户看得见失败。
+      setPending((current) => {
+        const nextPending = { ...current }
+        delete nextPending[field]
+        return nextPending
+      })
+      setFailedField(field)
+    })
+  }
+
+  // 滑块：拖动过程只改本地草稿（不打网络），松手/失焦/键盘松开才落盘——
+  // 否则一次拖动会轰出几十个写请求。
+  const draftRef = useRef<number | null>(null)
+  const sliderMove = (raw: string | number): void => {
+    const next = normalizeColumns(raw)
+    draftRef.current = next
+    setPending((current) => ({ ...current, columns: next }))
+  }
+  const sliderCommit = (): void => {
+    const next = draftRef.current
+    if (next === null) return
+    draftRef.current = null
+    if (next === normalizeColumns(shown('columns'))) return
+    commit('columns', next)
+  }
+
   const rows: JSX.Element[] = []
   if (snapshot.status === 'unavailable') {
     // 拿不到设置服务：抽屉仍要在（否则这个插件在分区里彻底消失），只是里面说明原因。
@@ -119,9 +188,9 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
         title: translate(t, 'card.enabled'),
         desc: translate(t, 'card.enabled.desc'),
         control: createElement(Toggle, {
-          checked: value.enabled ?? DEFAULT_CONFIG.enabled,
+          checked: shown('enabled') === true,
           disabled: !writable,
-          onChange: (checked) => { void scope.set('enabled', checked) },
+          onChange: (checked) => { commit('enabled', checked) },
         }),
       }),
       // 2026-10-20 养老院页签退场：historyFiles 开关不再暴露（配置字段保留，
@@ -131,9 +200,9 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
         title: translate(t, 'card.health'),
         desc: translate(t, 'card.health.desc'),
         control: createElement(Toggle, {
-          checked: value.healthCheck ?? DEFAULT_CONFIG.healthCheck,
+          checked: shown('healthCheck') !== false,
           disabled: !writable,
-          onChange: (checked) => { void scope.set('healthCheck', checked) },
+          onChange: (checked) => { commit('healthCheck', checked) },
         }),
       }),
       // 直接删除入口（功能①，2026-10-20 用户定标）：缺省关——破坏性入口
@@ -143,26 +212,43 @@ export function StewardSettingsCard({ t, scope }: StewardCardProps): JSX.Element
         title: translate(t, 'card.directDelete'),
         desc: translate(t, 'card.directDelete.desc'),
         control: createElement(Toggle, {
-          checked: value.directDelete ?? DEFAULT_CONFIG.directDelete,
+          checked: shown('directDelete') === true,
           disabled: !writable,
-          onChange: (checked) => { void scope.set('directDelete', checked) },
+          onChange: (checked) => { commit('directDelete', checked) },
         }),
       }),
     )
-    // 每行显示几个会话（1–6）。1 列在 manage 里有专门的大卡样式。
+    // 每行显示几个会话（1–6）：2026-11-26 用户定标改成**滑块**——六档按钮一排太占位，
+    // 而且拖动能给出连续的档位反馈。1 列在 manage 里有专门的大卡样式。
+    const columnValue = normalizeColumns(shown('columns'))
     rows.push(createElement(Row, {
       key: 'columns',
       title: translate(t, 'card.columns'),
       desc: translate(t, 'card.columns.desc'),
-      control: createElement('div', { className: 'dms_seg' }, COLUMN_CHOICES.map(n => createElement('button', {
-        key: String(n),
-        type: 'button',
-        className: `dms_segBtn${normalizeColumns(value.columns) === n ? ' dms_segBtnOn' : ''}`,
-        disabled: !writable,
-        'aria-pressed': normalizeColumns(value.columns) === n,
-        onClick: () => { void scope.set('columns', n) },
-      }, String(n)))),
+      control: createElement('div', { className: 'dms_sliderBox' }, [
+        createElement('input', {
+          key: 'r',
+          type: 'range',
+          className: 'dms_slider',
+          min: COLUMN_CHOICES[0],
+          max: COLUMN_CHOICES[COLUMN_CHOICES.length - 1],
+          step: 1,
+          value: columnValue,
+          disabled: !writable,
+          'aria-label': translate(t, 'card.columns'),
+          'aria-valuetext': translate(t, 'card.columns.value', { n: columnValue }),
+          onChange: (event: { target: { value: string } }) => { sliderMove(event.target.value) },
+          onPointerUp: () => { sliderCommit() },
+          onPointerCancel: () => { sliderCommit() },
+          onKeyUp: () => { sliderCommit() },
+          onBlur: () => { sliderCommit() },
+        }),
+        createElement('span', { key: 'v', className: 'dms_sliderVal' }, String(columnValue)),
+      ]),
     }))
+    if (failedField !== null) {
+      rows.push(createElement('div', { key: 'fail', className: 'dms_setFail' }, translate(t, 'card.saveFailed')))
+    }
     if (!writable) rows.push(createElement('div', { key: 'ro', className: 'dms_setDesc' }, translate(t, 'card.readonly')))
   }
 
