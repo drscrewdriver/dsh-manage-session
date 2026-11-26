@@ -1,10 +1,14 @@
 /**
- * Legacy 设置桥（宿主半身，≤0.1.5 专用）：老宿主的服务端 settings 服务保留
- * register/get/update 三件套 —— 这是 context-compression legacy 租约（六格
- * 实证 POST 200 + 持久化）验证过的持久化写路径。0.1.7+ 宿主删掉了 register
- * （审计 P1-13：API 不存在，不是探测跳过），配置活在 entry-config volatile
- * 字段里、client configForms 原生可用 —— 本桥在那些线上解析为 undefined，
- * describe/mutate 方法降级为「显式拒绝写」。
+ * 设置桥（宿主半身）：老宿主（≤0.1.5）保留 register/get/update 三件套，
+ * 0.1.7+ 换成 describe/update/mutate（**没有 register**）。两代都必须咬合：
+ *
+ *  - 老线：register 注册 plain schema → get 读文档 → update 合并写；
+ *  - 现代线：describe() 的 ns 是 **profile entry id**（本包 `dsh-manage-session`）
+ *    → 同 ns 行的 value 即权威投影 → update 合并写（不传 expectedRevision）。
+ *
+ * 2026-11 实锤：现代线原来只按 `register` 判定咬合，桥永远空 → settings-describe
+ * 报 writable=false → 设置卡整片禁用（宿主 provider 的 writable 恒 true，只读
+ * 从来不是宿主给的，是本插件自己的缺陷）。
  *
  * 设置命名空间只有一个：`manage-session`（搜索子域已拆回 dsh-search-index，
  * 搜索字段与命名空间不在本包）。schema 必须
@@ -18,6 +22,7 @@
 import z from '@deepseek-ai/schemastery'
 import {
   DEFAULT_CONFIG,
+  STEWARD_ENTRY_ID,
   STEWARD_SETTINGS_NAMESPACE,
 } from '../config.ts'
 
@@ -26,6 +31,10 @@ export interface LegacySettingsFace {
   register?: (ns: string, schema: unknown) => unknown
   get?: (ns: string) => unknown
   update?: (ns: string, patch: Record<string, unknown>) => Promise<unknown>
+  /** 0.1.7+ 读面：每个 ACTIVE entry 一行（`{ ns, value, revision, … }`）。 */
+  describe?: () => unknown
+  /** 0.1.7+ 逐字段写面（`update` 缺席时兜底）。 */
+  mutate?: (ns: string, ops: unknown[], expectedRevision?: number) => Promise<unknown>
 }
 
 /** 桥对 handleMethod 暴露的面。 */
@@ -37,6 +46,15 @@ export interface LegacySettingsBridge {
 }
 
 const SHARED_LEASE = Symbol.for('dsh-manage-session/legacy-settings-bridge')
+
+/** 宿主 describe() 的一行（现代线的 ns = profile entry id）。 */
+interface DescribeRow {
+  ns?: unknown
+  value?: unknown
+}
+
+/** 逻辑命名空间 → 宿主 ns 的候选表（顺序即优先级；现代线在前）。 */
+const HOST_NS_CANDIDATES: readonly string[] = [STEWARD_ENTRY_ID, STEWARD_SETTINGS_NAMESPACE]
 
 /** 管理命名空间 schema（纯 plain，无 volatile —— 老线 register 拒收 volatile 节点）。 */
 const StewardNsSchema = z.object({
@@ -53,12 +71,41 @@ function asDoc(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>
 }
 
+/** 读一次宿主 describe（不可读 / 抛错 = 空表；桥的任何失败都不许拖死插件树）。 */
+function describeRows(settings: LegacySettingsFace): DescribeRow[] {
+  if (typeof settings.describe !== 'function') return []
+  try {
+    const rows = settings.describe()
+    return Array.isArray(rows) ? (rows as DescribeRow[]) : []
+  } catch {
+    return []
+  }
+}
+
 /**
- * 在老宿主上租约注册两个命名空间；返回**同步创建的可变 holder**，桥面在
- * `ctx.inject(['settings'], …)` 回调里填入（cordis 作用域注入——settings 服务
- * 只在回调的 sctx 上可见，`ctx.get('settings')` 在 0.1.0 拿不到；0.1.7+ 无
- * register，回调即 return，holder 永远空桥 = describe 只读、mutate 显式拒绝）。
- * 重复 apply 经 Symbol 租约只注册一次；回调体内全部 try/catch——桥的任何
+ * 现解析宿主 ns 与它的权威文档。
+ *
+ * **不许缓存**：现代线的 ns 是 profile entry id（`dsh-manage-session`），老线是
+ * `manage-session`；而且本插件自己那一行在 apply 期可能还没 ACTIVE（宿主 describe
+ * 只列 ACTIVE entry），锁死一次就会永久落空。
+ */
+function resolveHostDoc(
+  settings: LegacySettingsFace,
+): { ns: string; value: Record<string, unknown> } | undefined {
+  const rows = describeRows(settings)
+  for (const ns of HOST_NS_CANDIDATES) {
+    const doc = asDoc(rows.find((row) => row?.ns === ns)?.value)
+    if (doc !== undefined) return { ns, value: doc }
+  }
+  return undefined
+}
+
+/**
+ * 咬合两代宿主；返回**同步创建的可变 holder**，桥面在 `ctx.inject(['settings'], …)`
+ * 回调里填入（cordis 作用域注入——settings 服务只在回调的 sctx 上可见，
+ * `ctx.get('settings')` 在 0.1.0 拿不到）。
+ *
+ * 重复 apply 经 Symbol 租约只注册一次 schema；回调体内全部 try/catch——桥的任何
  * 失败都不允许拖死插件树（0.1.0 实机教训：严格 ctx 上裸属性读即 fatal）。
  */
 export function installLegacySettingsBridge(ctx: unknown): BridgeState {
@@ -71,23 +118,33 @@ export function installLegacySettingsBridge(ctx: unknown): BridgeState {
     injectFn.call(ctx, ['settings'], (sctx) => {
       try {
         const settings = sctx?.settings
-        if (settings === undefined || typeof settings.register !== 'function') return
-        const carrier = settings as LegacySettingsFace & { [SHARED_LEASE]?: true }
-        if (carrier[SHARED_LEASE] !== true) {
-          settings.register(STEWARD_SETTINGS_NAMESPACE, StewardNsSchema)
-          try {
-            Object.defineProperty(carrier, SHARED_LEASE, {
-              configurable: false,
-              enumerable: false,
-              writable: false,
-              value: true,
-            })
-          } catch {
-            /* 服务对象冻结时无法钉标记：退化为可能重复注册（幂等宿主无碍） */
+        if (settings === undefined || settings === null) return
+        // 咬合条件=「有写入口」：update（两代都有）或 0.1.7+ 的 mutate。
+        // 无写入口 = 真只读，保持空桥（settings-describe 落运行时投影 + writable=false）。
+        if (typeof settings.update !== 'function' && typeof settings.mutate !== 'function') return
+        // 老线专属：register 在就先注册 plain schema（现代宿主没有这个方法）。
+        if (typeof settings.register === 'function') {
+          const carrier = settings as LegacySettingsFace & { [SHARED_LEASE]?: true }
+          if (carrier[SHARED_LEASE] !== true) {
+            settings.register(STEWARD_SETTINGS_NAMESPACE, StewardNsSchema)
+            try {
+              Object.defineProperty(carrier, SHARED_LEASE, {
+                configurable: false,
+                enumerable: false,
+                writable: false,
+                value: true,
+              })
+            } catch {
+              /* 服务对象冻结时无法钉标记：退化为可能重复注册（幂等宿主无碍） */
+            }
           }
         }
         state.bridge = {
           get: (ns) => {
+            // 现代线：describe 同 ns 行的 value 是权威投影（含缺省），优先它。
+            const modern = resolveHostDoc(settings)
+            if (modern !== undefined) return modern.value
+            // 老线（及 describe 尚未覆盖本 entry 时）：回落 settings.get。
             try {
               return asDoc(settings.get?.(ns))
             } catch {
@@ -95,10 +152,19 @@ export function installLegacySettingsBridge(ctx: unknown): BridgeState {
             }
           },
           update: async (ns, patch) => {
-            await settings.update?.(ns, patch)
+            const target = resolveHostDoc(settings)?.ns ?? ns
+            if (typeof settings.update === 'function') {
+              // 不传 expectedRevision：宿主在 undefined 时跳过 revision 比对，
+              // 面板开着连写不会撞 SettingsConflictError。
+              await settings.update(target, patch)
+              return
+            }
+            const mutate = settings.mutate
+            if (typeof mutate !== 'function') throw new Error('宿主 settings 服务没有写入口')
+            const ops = Object.entries(patch).map(([field, value]) => ({ op: 'set', path: [field], value }))
+            await mutate(target, ops, undefined)
           },
         }
-
       } catch (err) {
         console.log(`[dsh-manage-session] legacy settings bridge FAILED (cards degrade to read-only): ${String(err instanceof Error ? err.message : err)}`)
       }
@@ -203,7 +269,7 @@ export async function settingsMutate(
   payload: unknown,
 ): Promise<{ ok: boolean; error?: string; namespaces?: BridgeNamespaces; revision?: number }> {
   if (state.bridge === undefined) {
-    return { ok: false, error: '本宿主无 legacy settings 服务（0.1.7+ 走 configForms 原生句柄），桥不可写' }
+    return { ok: false, error: '本宿主没有可用的设置写入口（既无 legacy register，也无 update/mutate），桥不可写' }
   }
   const request = (payload ?? {}) as MutatePayload
   if (typeof request.ns !== 'string' || !(request.ns in FIELD_VALIDATORS)) {

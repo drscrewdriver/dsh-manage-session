@@ -79,6 +79,7 @@ beforeEach(() => {
   ;(globalThis as { localStorage?: unknown }).localStorage = {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => { store.set(key, String(value)) },
+    removeItem: (key: string) => { store.delete(key) },
   }
 })
 
@@ -129,7 +130,7 @@ describe('star-row 副本（S 档）', () => {
     expect(opened).toContainEqual({ href: REPO, target: '_blank' })
     // 点星是「去点星」，不是「别打扰我」：话术仍在，dismissed 未写。
     expect(JSON.stringify(flatten(host))).toContain('一颗 Star 让工具被更多人看见')
-    expect(store.get('dsh.star.manage-session.dismissed')).toBeUndefined()
+    expect(store.get('dsh.star.manage-session.v2.dismissed')).toBeUndefined()
   })
 
   it('点隐藏只收话术与钮，链接当场仍在、仓库页没被打开', () => {
@@ -143,11 +144,11 @@ describe('star-row 副本（S 档）', () => {
     expect(JSON.stringify(flat)).not.toContain('留颗 Star')
     expect(flat).toContainEqual({ href: REPO, target: '_blank', rel: 'noreferrer' })
     expect(opened).toHaveLength(0)
-    expect(store.get('dsh.star.manage-session.dismissed')).toBe('1')
+    expect(store.get('dsh.star.manage-session.v2.dismissed')).toBe('1')
   })
 
   it('隐藏后重新渲染只剩裸链接（无话术无钮），且不再注入 S 容器', () => {
-    store.set('dsh.star.manage-session.dismissed', '1')
+    store.set('dsh.star.manage-session.v2.dismissed', '1')
     fakeDocument('zh-CN')
     const row = mountStarRow() as unknown as StubEl
     const flat = flatten(row)
@@ -155,5 +156,16 @@ describe('star-row 副本（S 档）', () => {
     expect(flat).toContainEqual({ href: REPO, target: '_blank', rel: 'noreferrer' })
     expect(JSON.stringify(flat)).not.toContain('一颗 Star')
     expect(JSON.stringify(flat)).not.toContain('留颗 Star')
+  })
+
+  it('旧键（≤2.0.25 误写）不生效：视为未关闭并就地清除，不当成用户意图', () => {
+    // 旧版把「点 ★」写成 dismissed=1，这一键是 bug 产物；读到即清、不迁值。
+    store.set('dsh.star.manage-session.dismissed', '1')
+    fakeDocument('zh-CN')
+    const row = mountStarRow() as unknown as StubEl
+    expect(buttonByClass(row, 'dsh-star-cta')).toBeDefined()
+    expect(buttonByClass(row, 'dsh-star-hide')).toBeDefined()
+    expect(store.get('dsh.star.manage-session.dismissed')).toBeUndefined()
+    expect(store.get('dsh.star.manage-session.v2.dismissed')).toBeUndefined()
   })
 })

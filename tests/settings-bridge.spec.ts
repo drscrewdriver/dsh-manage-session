@@ -6,7 +6,13 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../src/config.ts'
 import { handleMethod, type StewardRuntime } from '../src/index.ts'
-import { bridgeOverlay, type BridgeState, type LegacySettingsBridge } from '../src/host/settings-bridge.ts'
+import {
+  bridgeOverlay,
+  describeNamespaces,
+  installLegacySettingsBridge,
+  type BridgeState,
+  type LegacySettingsBridge,
+} from '../src/host/settings-bridge.ts'
 
 /** 内存版 legacy settings 服务（register 忽略 schema；get/update 走同一份文档）。 */
 function fakeBridge(initial: Record<string, Record<string, unknown>> = {}): {
@@ -44,6 +50,71 @@ function runtimeWith(bridge: BridgeState | undefined): StewardRuntime {
   }
 }
 
+
+/** 假 ctx：cordis 作用域注入的最小面（回调立即以给定 settings 调用）。 */
+function fakeCtx(settings: unknown): unknown {
+  return {
+    inject: (_deps: string[], fn: (sctx: { settings?: unknown }) => void) => { fn({ settings }) },
+  }
+}
+
+describe('桥咬合（两代宿主）', () => {
+  it('老线（≤0.1.5）：register 在 → 先注册 schema，读写落 manage-session', async () => {
+    const registered: string[] = []
+    const written: Array<[string, Record<string, unknown>]> = []
+    const docs: Record<string, Record<string, unknown>> = { 'manage-session': { enabled: false } }
+    const settings = {
+      register: (ns: string, _schema: unknown) => { registered.push(ns); return undefined },
+      get: (ns: string) => docs[ns],
+      update: async (ns: string, patch: Record<string, unknown>) => {
+        written.push([ns, patch])
+        docs[ns] = { ...docs[ns], ...patch }
+      },
+    }
+    const state = installLegacySettingsBridge(fakeCtx(settings))
+    expect(state.bridge).toBeDefined()
+    expect(registered).toEqual(['manage-session'])
+    expect(describeNamespaces(state)['manage-session']).toMatchObject({ enabled: false, columns: 3 })
+    await state.bridge!.update('manage-session', { columns: 4 })
+    expect(written.map(([ns]) => ns)).toEqual(['manage-session'])
+  })
+
+  it('现代线（0.1.7+，无 register）：describe+update 咬合，ns 用 profile entry id 且不传 revision', async () => {
+    const calls: Array<{ ns: string; patch: Record<string, unknown>; revision: unknown }> = []
+    const settings = {
+      describe: () => [{ ns: 'dsh-manage-session', revision: 9, value: { enabled: false, columns: 5 } }],
+      update: async (ns: string, patch: Record<string, unknown>, revision?: unknown) => {
+        calls.push({ ns, patch, revision })
+      },
+    }
+    const state = installLegacySettingsBridge(fakeCtx(settings))
+    expect(state.bridge).toBeDefined()
+    // 读：describe 同 ns 行的 value 即权威投影（含缺省）
+    expect(describeNamespaces(state)['manage-session']).toMatchObject({ enabled: false, columns: 5 })
+    await state.bridge!.update('manage-session', { columns: 2 })
+    // 写：ns 换成正宿主 entry id；expectedRevision 必须缺席（宿主据此跳过比对）
+    expect(calls).toEqual([{ ns: 'dsh-manage-session', patch: { columns: 2 }, revision: undefined }])
+  })
+
+  it('现代线无 update 时用 mutate 逐字段下发', async () => {
+    const ops: unknown[] = []
+    const settings = {
+      describe: () => [{ ns: 'dsh-manage-session', value: { enabled: true } }],
+      mutate: async (_ns: string, list: unknown[]) => { ops.push(...list) },
+    }
+    const state = installLegacySettingsBridge(fakeCtx(settings))
+    await state.bridge!.update('manage-session', { enabled: false, columns: 2 })
+    expect(ops).toEqual([
+      { op: 'set', path: ['enabled'], value: false },
+      { op: 'set', path: ['columns'], value: 2 },
+    ])
+  })
+
+  it('没有任何写入口：桥保持空（真只读），settings-describe 才报 writable=false', () => {
+    const state = installLegacySettingsBridge(fakeCtx({ describe: () => [{ ns: 'dsh-manage-session', value: {} }] }))
+    expect(state.bridge).toBeUndefined()
+  })
+})
 describe('settings-describe', () => {
   it('legacy 桥：回两命名空间文档 + writable=true + revision', async () => {
     const docs = fakeBridge({ 'manage-session': { enabled: false } })
@@ -67,7 +138,8 @@ describe('settings-describe', () => {
     expect(described.writable).toBe(false)
     const mutated = await handleMethod('settings-mutate', { ns: 'manage-session', fields: { enabled: false } }, runtime) as { ok: boolean; error?: string }
     expect(mutated.ok).toBe(false)
-    expect(mutated.error).toContain('legacy settings 服务')
+    // 文案已改口径：真正缺的是「写入口」，不再是「缺 legacy settings 服务」。
+    expect(mutated.error).toContain('设置写入口')
   })
 
   it('闸旁路：enabled/healthCheck/historyFiles 全关，describe 仍然可读', async () => {

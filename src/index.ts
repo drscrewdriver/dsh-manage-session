@@ -903,7 +903,10 @@ function validSessionIds(value: unknown): string[] | undefined {
  * @param payload - 已解析的请求体。
  * @param runtime - 运行时依赖。
  */
-/** 现代宿主的只读投影：把运行时配置按命名空间形状输出（describe 用）。 */
+/**
+ * 宿主运行时配置投影（describe 用）：设置服务完全不可用（无 update/mutate）时的
+ * 兜底回读面 —— 值仍然是真的，只是 writable=false（写不进去）。
+ */
 function configSnapshotProjection(
   config: Required<StewardConfig>,
 ): Record<string, Record<string, unknown>> {
@@ -940,7 +943,8 @@ export async function handleMethod(
   if (method === 'settings-describe') {
     const state = runtime.settingsBridge
     if (state !== undefined && state.bridge !== undefined) return settingsDescribe(state)
-    // modern 宿主（0.1.7+，无 legacy settings 服务）：运行时配置只读投影。
+    // 无可用设置服务（没有 update/mutate）：运行时配置投影 + writable=false。
+    // 注：0.1.7+ 宿主正常情形下桥已咬合（describe/update），不会再走到这里。
     return { ok: true, namespaces: configSnapshotProjection(config), writable: false, revision: state?.revision ?? 0 }
   }
   if (method === 'settings-mutate') {

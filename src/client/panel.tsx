@@ -47,12 +47,55 @@ export interface StewardPanelProps {
   variant?: 'dialog' | 'page'
   /** 官方服务 getter（动作层用），缺省 = undefined 降级（按钮不渲染）。 */
   services?: ServiceGetter
+  /**
+   * 每行显示几个会话（1–6，设置快照驱动）。设置一改这里就变，管理台网格跟着重排；
+   * 缺省 = 老宿主不传，管理台回落一次性读取。
+   */
+  columns?: number
+}
+
+/** 设置壳 store 的最小面（shell-store.ts 的 action 形状）。 */
+interface ShellStoreLike {
+  create?: () => { actions?: { openSection?: (id: string) => void } }
+  actions?: { openSection?: (id: string) => void }
+}
+
+/**
+ * Bundle 设置页捷径：宿主没有对插件公开的 openSection 面，但 sidebar.settings
+ * 注册时的 options 里带着设置壳 store（settings-general 注册时传入，非文档面）。
+ * 拿得到就跳 plugins 分区（本插件的 plugins.bundle.config 卡就在那）；拿不到
+ * 返回 false，由调用方落「路径提示」降级——不做 DOM 查找这种易碎手段。
+ */
+function openBundleSettings(services?: ServiceGetter): boolean {
+  try {
+    const slots = services?.('slots') as { entries?: (name: string) => unknown[] } | undefined
+    const entry = slots?.entries?.('sidebar.settings')?.[0] as
+      | { options?: { store?: ShellStoreLike }; store?: ShellStoreLike }
+      | undefined
+    const store = entry?.options?.store ?? entry?.store
+    if (store === undefined) return false
+    const handle = typeof store.create === 'function' ? store.create() : store
+    const openSection = handle?.actions?.openSection
+    if (typeof openSection !== 'function') return false
+    handle?.actions?.openSection?.('plugins')
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** 会话管理对话框 / 整页。 */
-export function StewardPanel({ t, healthCheck, historyFiles = true, openSession, onClose, variant = 'dialog', services }: StewardPanelProps): ReactElement {
+export function StewardPanel({ t, healthCheck, historyFiles = true, openSession, onClose, variant = 'dialog', services, columns }: StewardPanelProps): ReactElement {
   // 主页面=管理（会话管理台）；体检与清理是后台页签（用户定标：清理放体检旁）。
   const [tab, setTab] = useState<'health' | 'manage' | 'cleanup'>('manage')
+  // 设置捷径降级提示：3 秒后自动消失（不弹窗、不打断操作）。
+  const [settingsHint, setSettingsHint] = useState(false)
+
+  useEffect(() => {
+    if (!settingsHint) return undefined
+    const timer = setTimeout(() => { setSettingsHint(false) }, 3000)
+    return () => { clearTimeout(timer) }
+  }, [settingsHint])
 
   // 开关变化后收敛到仍然可见的页签（体检关掉→回管理；删除子域关掉→清理也不可进）。
   useEffect(() => {
@@ -103,6 +146,7 @@ export function StewardPanel({ t, healthCheck, historyFiles = true, openSession,
           // 整页形态必须退页后再延一帧导航，否则第一次点击只能把页面关掉。
           deferOpen: variant === 'page',
           services,
+          columns,
         }))
     : tab === 'health'
       ? createElement(HealthPanel, { t, onClose })
@@ -118,6 +162,14 @@ export function StewardPanel({ t, healthCheck, historyFiles = true, openSession,
     createElement('div', { key: 'head', className: 'dms_dialogHead' }, [
       createElement('span', { key: 'title', className: 'dms_dialogTitle' }, translate(t, 'panel.title')),
       createElement('span', { key: 'tabs', className: 'dms_tabRow' }, tabs),
+      settingsHint && createElement('span', { key: 'sh', className: 'dms_setDesc' }, translate(t, 'panel.settings.hint')),
+      createElement('button', {
+        key: 'settings',
+        type: 'button',
+        className: 'dms_actBtn',
+        title: translate(t, 'panel.settings.hint'),
+        onClick: () => { if (!openBundleSettings(services)) setSettingsHint(true) },
+      }, translate(t, 'panel.settings')),
       createElement('button', {
         key: 'close',
         type: 'button',

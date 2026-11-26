@@ -56,6 +56,14 @@ describe('resolveColumns：6 档 × 3 断点', () => {
     }
   })
 
+  it('设置值一变，有效列数立刻跟着变（同一宽度同一容器）', () => {
+    const width = MEDIUM_BREAKPOINT + 500
+    const seen = COLUMN_CHOICES.map(setting => resolveColumns(setting, width))
+    // 顺序即 1→6 的瞬时序列：管理台的网格列数必须逐档跟上，不许停在旧值。
+    expect(seen).toEqual([...COLUMN_CHOICES])
+    expect(seen[0]).not.toBe(seen[seen.length - 1])
+  })
+
   it('宽度未知（非有限数 / 0）时采信设置值', () => {
     for (const setting of COLUMN_CHOICES) {
       for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -100]) {

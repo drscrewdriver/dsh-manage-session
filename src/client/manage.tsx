@@ -11,7 +11,7 @@
  */
 import { createElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { callHostAny, callSteward, callStewardItems, streamCatalogTitles, type HostSessionItem, type OpenSessionOutcome } from './host-api.ts'
-import { DEFAULT_COLUMNS, resolveColumns, type ColumnChoice } from './columns.ts'
+import { DEFAULT_COLUMNS, normalizeColumns, resolveColumns, type ColumnChoice } from './columns.ts'
 import { translate, type LocaleKey } from './manage-locales.ts'
 import { matchesCatalogText } from './session-filter.ts'
 import {
@@ -209,7 +209,7 @@ function injectManageStyles(): () => void {
 let lastOpenError: string | null = null
 
 /** 批量管理台主体（自持语料/勾选/批量状态）。 */
-export function ManageConsole({ t, open, deferOpen = false, services }: {
+export function ManageConsole({ t, open, deferOpen = false, services, columns }: {
   t?: ManageTranslate
   /** 打开会话：返回结果（失败由本组件就地提示，绝不抛错/白屏）。 */
   open: (sessionId: string, options?: { defer?: boolean; onError?: (message: string) => void }) => OpenSessionOutcome
@@ -217,6 +217,11 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
   deferOpen?: boolean
   /** 官方服务 getter（缺省 = () => undefined，动作按钮不渲染）。 */
   services?: ServiceGetter
+  /**
+   * 每行显示几个会话（1–6）。由设置快照透传，设置一改就重排；缺省时回落
+   * 一次性读取 `session-health-status` 的 switches.columns。
+   */
+  columns?: number
 }): ReactElement {
   const [sessions, setSessions] = useState<HostSessionItem[] | null>(null)
   const [sessionsError, setSessionsError] = useState<string | null>(null)
@@ -285,7 +290,7 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
   /** 有效列数（设置值 × 容器宽度，由 resolveColumns 裁决）。 */
   const [cols, setCols] = useState<ColumnChoice>(DEFAULT_COLUMNS)
   /** 用户设置里的每行个数（来自设置面 `columns`）。 */
-  const [colSetting, setColSetting] = useState<number>(DEFAULT_COLUMNS)
+  const [colSetting, setColSetting] = useState<number>(() => normalizeColumns(columns ?? DEFAULT_COLUMNS))
   const gridHostRef = useRef<HTMLDivElement | null>(null)
   /** 移动目标选择浮层（null = 关闭）。 */
   const [movePicker, setMovePicker] = useState<{
@@ -453,17 +458,22 @@ export function ManageConsole({ t, open, deferOpen = false, services }: {
     })
   }, [workspaceFilter])
 
-  // 列设置：读一次设置面（`session-health-status` 的 switches 里带 columns；
-  // 老宿主没有该字段时回落缺省 3）。
+  // 列设置：优先由设置快照 prop 驱动——设置卡一改，本组件立刻重排（原来只在
+  // 挂载时读一次 `session-health-status`，所以「设置写了、网格不跟」）。
+  // prop 缺省（老宿主/裸挂载）时保留一次性读取兜底。
   useEffect(() => {
+    if (columns !== undefined) {
+      setColSetting(normalizeColumns(columns))
+      return undefined
+    }
     let alive = true
     void callSteward<{ switches?: Record<string, unknown> }>('session-health-status', {}).then((res) => {
       if (!alive || !res.ok) return
       const raw = res.switches?.columns
-      if (typeof raw === 'number') setColSetting(raw)
+      if (typeof raw === 'number') setColSetting(normalizeColumns(raw))
     }).catch(() => { /* 读不到就用缺省 */ })
     return () => { alive = false }
-  }, [])
+  }, [columns])
 
   // 宽度变化 → 重算有效列数（窄屏强制 1 列，中屏最多 2 列）。
   useEffect(() => {

@@ -129,10 +129,19 @@ function starLang(): string {
   return "en";
 }
 
+/** 关闭态新键（v2）。**必须换键**：≤2.0.25 把「点 ★」误写成了关闭，旧键里的 1 是误判产物。 */
+const STAR_DISMISS_KEY = "dsh.star." + STAR_NS + ".v2.dismissed";
+/** 旧键（脏数据源）：读到即清掉，**不迁值**——迁过来等于把旧 bug 固化。 */
+const STAR_DISMISS_KEY_V1 = "dsh.star." + STAR_NS + ".dismissed";
+
 /** 是否已被用户点掉话术（隐私模式下读失败按未关闭处理，只影响本次会话）。 */
 function starDismissed(): boolean {
   try {
-    return localStorage.getItem("dsh.star." + STAR_NS + ".dismissed") === "1";
+    // 一次性清旧键：旧版点 ★ 就写 1，凡中招的用户会被它永久按成裸链接。
+    if (localStorage.getItem(STAR_DISMISS_KEY_V1) !== null) {
+      localStorage.removeItem(STAR_DISMISS_KEY_V1);
+    }
+    return localStorage.getItem(STAR_DISMISS_KEY) === "1";
   } catch {
     return false;
   }
@@ -141,7 +150,7 @@ function starDismissed(): boolean {
 /** 记住关闭态（隐私模式写失败不报错，话术本次隐藏、刷新复活）。 */
 function starDismiss(): void {
   try {
-    localStorage.setItem("dsh.star." + STAR_NS + ".dismissed", "1");
+    localStorage.setItem(STAR_DISMISS_KEY, "1");
   } catch {
     /* noop */
   }

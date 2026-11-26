@@ -473,6 +473,7 @@ export function StewardEntry(
         historyFiles: config.historyFiles !== false,
         openSession: props.openSession,
         services: props.services,
+        columns: config.columns,
         onClose: () => { setOpen(false) },
       })
       : null,
@@ -605,6 +606,7 @@ function mountTopToolEntries(
       historyFiles: config.historyFiles !== false,
       openSession,
       services,
+      columns: config.columns,
       onClose: closePanel,
     })
   }
